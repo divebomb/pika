@@ -122,7 +122,7 @@ void SlaveofCmd::Do() {
   }
 
   bool sm_ret = g_pika_server->SetMaster(master_ip_, master_port_);
-  
+
   if (sm_ret) {
     res_.SetRes(CmdRes::kOk);
   } else {
@@ -1049,11 +1049,11 @@ void ConfigCmd::ConfigGet(std::string &ret) {
   } else if (get_item == "maxmemory") {
       ret = "*2\r\n";
       EncodeString(&ret, "maxmemory");
-      EncodeInt32(&ret, g_pika_conf->write_buffer_size());
+      EncodeInt64(&ret, g_pika_conf->write_buffer_size());
   } else if (get_item == "write-buffer-size") {
       ret = "*2\r\n";
       EncodeString(&ret, "write-buffer-size");
-      EncodeInt32(&ret, g_pika_conf->write_buffer_size());
+      EncodeInt64(&ret, g_pika_conf->write_buffer_size());
   } else if (get_item == "timeout") {
       ret = "*2\r\n";
       EncodeString(&ret, "timeout");
@@ -1185,9 +1185,9 @@ void ConfigCmd::ConfigGet(std::string &ret) {
     EncodeString(&ret, "db-path");
     EncodeString(&ret, g_pika_conf->db_path());
     EncodeString(&ret, "maxmemory");
-    EncodeInt32(&ret, g_pika_conf->write_buffer_size());
+    EncodeInt64(&ret, g_pika_conf->write_buffer_size());
     EncodeString(&ret, "write-buffer-size");
-    EncodeInt32(&ret, g_pika_conf->write_buffer_size());
+    EncodeInt64(&ret, g_pika_conf->write_buffer_size());
     EncodeString(&ret, "timeout");
     EncodeInt32(&ret, g_pika_conf->timeout());
     EncodeString(&ret, "requirepass");

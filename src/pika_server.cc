@@ -235,7 +235,7 @@ bool PikaServer::ServerInit() {
 }
 
 void PikaServer::NemoOptionInit(nemo::Options* option) {
-  option->write_buffer_size = g_pika_conf->write_buffer_size();
+  option->write_buffer_size = (size_t)(g_pika_conf->write_buffer_size());
   option->target_file_size_base = g_pika_conf->target_file_size_base();
   option->max_background_flushes = g_pika_conf->max_background_flushes();
   option->max_background_compactions = g_pika_conf->max_background_compactions();
@@ -388,7 +388,7 @@ void PikaServer::DeleteSlave(int fd) {
   if (slave_num == 0) {
     role_ &= ~PIKA_ROLE_MASTER;
     if (DoubleMasterMode()) {
-      role_ |= PIKA_ROLE_DOUBLE_MASTER; 
+      role_ |= PIKA_ROLE_DOUBLE_MASTER;
     }
   }
 }
@@ -401,7 +401,7 @@ void PikaServer::DeleteSlave(int fd) {
 bool PikaServer::ChangeDb(const std::string& new_path) {
   nemo::Options option;
 
-  option.write_buffer_size = g_pika_conf->write_buffer_size();
+  option.write_buffer_size = (size_t)(g_pika_conf->write_buffer_size());
   option.target_file_size_base = g_pika_conf->target_file_size_base();
   option.max_background_flushes = g_pika_conf->max_background_flushes();
   option.max_background_compactions = g_pika_conf->max_background_compactions();
@@ -459,7 +459,7 @@ void PikaServer::MayUpdateSlavesMap(int64_t sid, int32_t hb_fd) {
       iter->hb_fd = hb_fd;
       iter->stage = SLAVE_ITEM_STAGE_TWO;
       LOG(INFO) << "New Master-Slave connection established successfully, Slave host: " << iter->ip_port;
-      
+
       // If receive 'spci' from the peer-master
       if (DoubleMasterMode() && repl_state_ == PIKA_REPL_NO_CONNECT && iter->sid == double_master_sid_) {
         std::string double_master_ip = g_pika_conf->double_master_ip();
@@ -852,7 +852,7 @@ void PikaServer::DBSyncSendFile(const std::string& ip, int port) {
   }
   if (0 == ret) {
     LOG(INFO) << "rsync send files success";
-    // If receiver is the peer-master, 
+    // If receiver is the peer-master,
     // need to update receive binlog info
     if ((g_pika_conf->double_master_ip() == ip || host() == ip)
         && (g_pika_conf->double_master_port() + 3000) == port) {
@@ -972,7 +972,7 @@ bool PikaServer::RunBgsaveEngine() {
     return false;
   }
   LOG(INFO) << "after prepare bgsave";
-  
+
   BGSaveInfo info = bgsave_info();
   LOG(INFO) << "   bgsave_info: path=" << info.path
     << ",  filenum=" << info.filenum

@@ -154,7 +154,7 @@ int PikaConf::Load()
   }
 
   // write_buffer_size
-  GetConfInt("write-buffer-size", &write_buffer_size_);
+  GetConfInt64("write-buffer-size", &write_buffer_size_);
   if (write_buffer_size_ <= 0 ) {
       write_buffer_size_ = 4194304; // 40M
   }
@@ -240,7 +240,7 @@ int PikaConf::ConfigRewrite() {
   SetConfStr("db-path", db_path_);
   SetConfStr("db-sync-path", db_sync_path_);
   SetConfInt("db-sync-speed", db_sync_speed_);
-  SetConfInt("write-buffer-size", write_buffer_size_);
+  SetConfInt64("write-buffer-size", write_buffer_size_);
   SetConfInt("timeout", timeout_);
   SetConfStr("server-id", server_id_);
   SetConfStr("requirepass", requirepass_);

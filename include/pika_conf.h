@@ -7,6 +7,7 @@
 #define PIKA_CONF_H_
 #include <pthread.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string>
 #include <vector>
 
@@ -40,7 +41,7 @@ class PikaConf : public slash::BaseConf {
   int db_sync_speed()   { RWLock l(&rwlock_, false); return db_sync_speed_; }
   std::string compact_cron() { RWLock l(&rwlock_, false); return compact_cron_; }
   std::string compact_interval() { RWLock l(&rwlock_, false); return compact_interval_; }
-  int write_buffer_size() { RWLock l(&rwlock_, false); return write_buffer_size_; }
+  int64_t write_buffer_size() { RWLock l(&rwlock_, false); return write_buffer_size_; }
   int timeout()           { RWLock l(&rwlock_, false); return timeout_; }
   std::string server_id() { RWLock l(&rwlock_, false); return server_id_; }
 
@@ -182,7 +183,7 @@ private:
   int db_sync_speed_;
   std::string compact_cron_;
   std::string compact_interval_;
-  int write_buffer_size_;
+  int64_t write_buffer_size_;
   int log_level_;
   bool daemonize_;
   bool slotmigrate_;
