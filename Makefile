@@ -1,7 +1,7 @@
 CLEAN_FILES = # deliberately empty, so we can append below.
 CXX=g++
 PLATFORM_LDFLAGS= -lpthread -lrt
-PLATFORM_CXXFLAGS= -std=c++11 -fno-builtin-memcmp -msse -msse4.2 
+PLATFORM_CXXFLAGS= -std=c++11 -fno-builtin-memcmp -msse -msse4.2
 PROFILING_FLAGS=-pg
 OPT=
 LDFLAGS += -Wl,-rpath=$(RPATH)
@@ -83,14 +83,14 @@ endif
 NEMO = $(NEMO_PATH)/lib/libnemo$(DEBUG_SUFFIX).a
 
 ifndef GLOG_PATH
-GLOG_PATH = $(THIRD_PATH)/glog
+GLOG_PATH = $(THIRD_PATH)/glogx
 endif
 
 ifeq ($(360), 1)
 GLOG := $(GLOG_PATH)/.libs/libglog.a
 endif
 
-INCLUDE_PATH = -I. \
+INCLUDE_PATH = -I. -I./third/glogx/include \
 							 -I$(SLASH_PATH) \
 							 -I$(PINK_PATH) \
 							 -I$(NEMO_PATH)/include \
@@ -102,7 +102,7 @@ ifeq ($(360),1)
 INCLUDE_PATH += -I$(GLOG_PATH)/src
 endif
 
-LIB_PATH = -L./ \
+LIB_PATH = -L./ -L./third/glogx/lib \
 					 -L$(SLASH_PATH)/slash/lib \
 					 -L$(PINK_PATH)/pink/lib \
 					 -L$(NEMO_PATH)/lib \
@@ -187,7 +187,7 @@ $(SRC_PATH)/build_version.cc: FORCE
 	$(AM_V_at)if test -f $@; then         \
 	  cmp -s $@-t $@ && rm -f $@-t || mv -f $@-t $@;    \
 	else mv -f $@-t $@; fi
-FORCE: 
+FORCE:
 
 LIBOBJECTS = $(LIB_SOURCES:.cc=.o)
 
@@ -207,14 +207,14 @@ all: $(BINARY)
 
 dbg: $(BINARY)
 
-$(BINARY): $(SLASH) $(PINK) $(ROCKSDB) $(NEMODB) $(NEMO) $(GLOG) $(LIBOBJECTS)
+$(BINARY): $(SLASH) $(PINK) $(ROCKSDB) $(NEMODB) $(NEMO) $(LIBOBJECTS)
 	$(AM_V_at)rm -f $@
 	$(AM_V_at)$(AM_LINK)
 	$(AM_V_at)rm -rf $(OUTPUT)
 	$(AM_V_at)mkdir -p $(OUTPUT)/bin
 	$(AM_V_at)mv $@ $(OUTPUT)/bin
 	$(AM_V_at)cp -r $(CURDIR)/conf $(OUTPUT)
-	
+
 
 $(SLASH):
 	$(AM_V_at)make -C $(SLASH_PATH)/slash/ DEBUG_LEVEL=$(DEBUG_LEVEL)
@@ -232,7 +232,7 @@ $(NEMO):
 	$(AM_V_at)make -C $(NEMO_PATH) NEMODB_PATH=$(NEMODB_PATH) ROCKSDB_PATH=$(ROCKSDB_PATH) DEBUG_LEVEL=$(DEBUG_LEVEL)
 
 $(GLOG):
-	cd $(THIRD_PATH)/glog; if [ ! -f ./Makefile ]; then ./configure --disable-shared; fi; make; echo '*' > $(CURDIR)/third/glog/.gitignore;
+	# cd $(THIRD_PATH)/glog; if [ ! -f ./Makefile ]; then ./configure --disable-shared; fi; make; echo '*' > $(CURDIR)/third/glog/.gitignore;
 
 clean:
 	rm -rf $(OUTPUT)
