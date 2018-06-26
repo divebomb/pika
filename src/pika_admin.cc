@@ -988,6 +988,15 @@ static void EncodeInt32(std::string *dst, const int32_t v) {
     dst->append("\r\n");
 }
 
+static void EncodeInt64(std::string *dst, const int64_t v) {
+    std::string vstr = std::to_string(v);
+    dst->append("$");
+    dst->append(std::to_string(vstr.length()));
+    dst->append("\r\n");
+    dst->append(vstr);
+    dst->append("\r\n");
+}
+
 void ConfigCmd::ConfigGet(std::string &ret) {
   std::string get_item = config_args_v_[1];
   if (get_item == "port") {
