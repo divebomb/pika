@@ -232,7 +232,7 @@ $(NEMO):
 	$(AM_V_at)make -C $(NEMO_PATH) NEMODB_PATH=$(NEMODB_PATH) ROCKSDB_PATH=$(ROCKSDB_PATH) DEBUG_LEVEL=$(DEBUG_LEVEL)
 
 $(GLOG):
-	# cd $(THIRD_PATH)/glog; if [ ! -f ./Makefile ]; then ./configure --disable-shared; fi; make; echo '*' > $(CURDIR)/third/glog/.gitignore;
+	cd $(THIRD_PATH)/glog; if [ ! -f ./Makefile ]; then ./configure --disable-shared; fi; make; echo '*' > $(CURDIR)/third/glog/.gitignore;
 
 clean:
 	rm -rf $(OUTPUT)
@@ -246,4 +246,4 @@ distclean: clean
 	make -C $(NEMO_PATH) NEMODB_PATH=$(NEMODB_PATH) ROCKSDB_PATH=$(ROCKSDB_PATH) clean
 	make -C $(NEMODB_PATH)/ ROCKSDB_PATH=$(ROCKSDB_PATH) clean
 	make -C $(ROCKSDB_PATH)/ clean
-#	make -C $(GLOG_PATH)/ clean
+	make -C $(GLOG_PATH)/ clean
