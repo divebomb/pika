@@ -1,6 +1,6 @@
 [submodule "third/glog"]
 	path = third/glog
-	url = https://github.com/Qihoo360/glog.git
+	url = https://github.com/divebomb/glog.init
 [submodule "third/pink"]
 	path = third/pink
 	url = https://github.com/PikaLabs/pink.git
