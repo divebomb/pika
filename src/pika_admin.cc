@@ -1063,6 +1063,10 @@ void ConfigCmd::ConfigGet(std::string &ret) {
       ret = "*2\r\n";
       EncodeString(&ret, "write-buffer-size");
       EncodeInt64(&ret, g_pika_conf->write_buffer_size());
+  } else if (get_item == "read-buffer-size") {
+      ret = "*2\r\n";
+      EncodeString(&ret, "read-buffer-size");
+      EncodeInt64(&ret, g_pika_conf->read_buffer_size());
   } else if (get_item == "timeout") {
       ret = "*2\r\n";
       EncodeString(&ret, "timeout");
@@ -1197,6 +1201,8 @@ void ConfigCmd::ConfigGet(std::string &ret) {
     EncodeInt64(&ret, g_pika_conf->write_buffer_size());
     EncodeString(&ret, "write-buffer-size");
     EncodeInt64(&ret, g_pika_conf->write_buffer_size());
+    EncodeString(&ret, "read-buffer-size");
+    EncodeInt64(&ret, g_pika_conf->read_buffer_size());
     EncodeString(&ret, "timeout");
     EncodeInt32(&ret, g_pika_conf->timeout());
     EncodeString(&ret, "requirepass");

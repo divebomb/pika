@@ -235,7 +235,8 @@ bool PikaServer::ServerInit() {
 }
 
 void PikaServer::NemoOptionInit(nemo::Options* option) {
-  option->write_buffer_size = (size_t)(g_pika_conf->write_buffer_size());
+  option->write_buffer_size = (int64_t)(g_pika_conf->write_buffer_size());
+  option->read_buffer_size = (int64_t)(g_pika_conf->read_buffer_size());
   option->target_file_size_base = g_pika_conf->target_file_size_base();
   option->max_background_flushes = g_pika_conf->max_background_flushes();
   option->max_background_compactions = g_pika_conf->max_background_compactions();
@@ -401,7 +402,8 @@ void PikaServer::DeleteSlave(int fd) {
 bool PikaServer::ChangeDb(const std::string& new_path) {
   nemo::Options option;
 
-  option.write_buffer_size = (size_t)(g_pika_conf->write_buffer_size());
+  option.write_buffer_size = (int64_t)(g_pika_conf->write_buffer_size());
+  option.read_buffer_size = (int64_t)(g_pika_conf->read_buffer_size());
   option.target_file_size_base = g_pika_conf->target_file_size_base();
   option.max_background_flushes = g_pika_conf->max_background_flushes();
   option.max_background_compactions = g_pika_conf->max_background_compactions();
