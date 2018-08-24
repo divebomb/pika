@@ -41,7 +41,7 @@ class BinlogConsumer{
   int Trim();
   virtual uint64_t GetNext(bool &is_error) = 0;
 
-  slash::Status LoadFile(uint32_t file);
+  slash::Status LoadFile(uint32_t file, uint64_t offset=0);
   slash::Status LoadNextFile();
   slash::Status Parse(std::string &scratch, uint64_t* produce_time);
 

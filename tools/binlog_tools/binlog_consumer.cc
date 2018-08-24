@@ -38,17 +38,24 @@ BinlogConsumer::~BinlogConsumer() {
   delete [] backing_store_;
 }
 
-Status BinlogConsumer::LoadFile(uint32_t file) {
+Status BinlogConsumer::LoadFile(uint32_t file, uint64_t offset) {
   if (queue_ != NULL) {
     delete queue_;
   }
   current_file_ = file;
   slash::SequentialFile *readfile;
   std::string confile = NewFileName(logger_->filename, current_file_);
+  printf("load confile %s\n", confile.c_str());
   if(!slash::FileExists(confile)){
     return Status::Corruption("error:binlog to consume does not exist");
   }
   if(slash::NewSequentialFile(confile, &readfile).ok()) {
+    // uint64_t block = (offset / kBlockSize) * kBlockSize;
+    // printf("offset %lu, block %lu\n", offset, block);
+    uint64_t block = offset;
+    if (offset != 0 && !readfile->Skip(block).ok()) {
+      return Status::Corruption("error skip offset");
+    }
     queue_ = readfile;
     DLOG(INFO) << "binlog file " << confile << " loaded to be parsed ";
     return Status::OK();
@@ -145,6 +152,7 @@ Status BinlogConsumer::Parse(std::string &scratch, uint64_t* produce_time) {
 Status BinlogConsumer::LoadNextFile(){
   std::string confile = NewFileName(logger_->filename, current_file_ + 1);
   if (slash::FileExists(confile)) {
+    printf("load new file %s\n", confile.c_str());
     DLOG(INFO) << "BinlogConsumer roll to new binlog" << confile;
     delete queue_;
     queue_ = NULL;

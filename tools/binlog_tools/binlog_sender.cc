@@ -3,6 +3,8 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
+#include <unistd.h>
+
 #include <glog/logging.h>
 #include <iostream>
 #include <stdio.h>
@@ -16,15 +18,18 @@
 #include "binlog.h"
 #include "binlog_consumer.h"
 #include "binlog_producer.h"
+#include "log.h"
 
 #define INPUT_FILESIZE 104857600
-
+const std::string SlotKeyPrefix_ = "_internal:slotkey:4migrate:";
 
 static void Usage()
 {
     fprintf(stderr,
-            "Usage: binlogsender [-h] [-t old/new -a password -i ip -p port -n input -f filenumber -s starttime -e endtime ]\n"
-            "\tBinlog_sender reads from pika's binlog and send to pika/redis server\n"
+            // -s starttime -e endtime
+            // -s '2001-10-11 11:11:11' -e '2020-12-11 11:11:11'
+            "Usage: binlog2redis [-h] [-t old/new -a password -i ip -p port -n input -f filenumber -o offset ]\n"
+            "\tBinlog2redis reads from pika's binlog and send to pika/redis server\n"
             "\tYou can specify a unixtime because pika's new binlog(later than 2.1.0) is timestamped.\n"
             "\tYou can build a new pika back to any timepoint with this tool, let's rock and roll!\n"
             "\t-h     -- show this help\n"
@@ -34,10 +39,9 @@ static void Usage()
             "\t-p     -- port of pika server\n"
             "\t-n     -- path of input binlog files , default: ./old_log/\n"
             "\t-f     -- files to send, default: 0\n"
-            "\t-s     -- start time , default: '2001-00-00 00:59:01' \n"
-            "\t-e     -- end time , default: '2100-01-30 24:00:01' \n"
-            "  example: ./binlog_sender -n /data2/wangwenduo/newlog/ -t new -i 127.0.0.1 -p 10221 -s '2001-10-11 11:11:11' -e '2020-12-11 11:11:11' -f 526,527  \n"
-            "  example2: ./binlog_sender -n /data2/wangwenduo/newlog/ -t new -i 127.0.0.1 -p 10221 -s '2001-10-11 11:11:11' -e '2020-12-11 11:11:11' -f 514-530  \n"
+            "\t-o     -- the first binlog offset, default: 0\n"
+            "  example: ./binlog2redis -n /data2/wangwenduo/newlog/ -t new -i 127.0.0.1 -p 10221 -f 526,527 -o100154678 \n"
+            "  example2: ./binlog2redis -n /data2/wangwenduo/newlog/ -t new -i 127.0.0.1 -p 10221 -f 514-530 -o100154678 \n"
            );
 
 }
@@ -98,6 +102,39 @@ bool CheckSequential(std::vector<int>& seq) {
   return isSeq;
 }
 
+const std::string kPikaBinlogMagicEx = "\r\n__PIKA_X#$SKGI";
+
+int RemoveBinlogAffiliatedInfo(std::string &s) {
+    // find the magic
+    size_t pos = s.find(kPikaBinlogMagicEx);
+    if (pos != std::string::npos) {
+        s.resize(pos);
+        // find the nearby $ to erase the affiliated info
+        pos = s.find_last_of("$");
+        if (pos != std::string::npos) {
+            s.resize(pos);
+            // find the first $
+            pos = s.find("$");
+            if (pos != std::string::npos) {
+                std::string ss = s.substr(pos);
+                std::string lenStr = s.substr(1, pos-1);
+                unsigned long len = strtoul(lenStr.c_str(), (char**)NULL, 10);
+                if (4 < len) {
+                    s.resize(1);
+
+                    char buf[16];
+                    snprintf(buf, sizeof(buf), "%lu\r\n", len - 4);
+                    s.append(buf);
+                    s += ss;
+
+                    return 0;
+                }
+            }
+        }
+    }
+
+    return -1;
+}
 
 
 /*
@@ -130,7 +167,8 @@ int main(int argc, char *argv[]) {
   std::string log_type = "old";
   std::string files_str = "0";
   std::string start_time_str = "2001-01-01 00:01:01";
-  std::string end_time_str = "2100-01-01 00:00:01";
+  std::string end_time_str = "2200-01-01 00:00:01";
+  uint64_t offset = 0;
 
   // for correct inputs , we use these flags to generate warning to user
   bool use_passwd = false;
@@ -141,8 +179,9 @@ int main(int argc, char *argv[]) {
   bool default_files = true;
   bool default_start_time = true;
   bool default_end_time = true;
+  bool default_offset = true;
   char c;
-  while (-1 != (c = getopt(argc, argv, "hn:i:p:t:f:s:e:a:"))) {
+  while (-1 != (c = getopt(argc, argv, "hn:i:p:t:f:s:e:a:o:"))) {
     switch (c) {
       case 'h':
         Usage();
@@ -162,6 +201,10 @@ int main(int argc, char *argv[]) {
       case 'p':
         port = atoi(optarg);
         default_port = false;
+        break;
+      case 'o':
+        offset = (uint64_t)strtoull(optarg, (char**)NULL, 10);
+        default_offset = false;
         break;
       case 't':
         log_type = optarg;
@@ -195,6 +238,9 @@ int main(int argc, char *argv[]) {
   if (default_port) {
     fprintf (stderr, "Warning: use default port:%d\n", port);
   }
+  if (default_offset) {
+    fprintf (stderr, "Warning: use default offset:%llu\n", offset);
+  }
   if (default_files) {
     fprintf (stderr, "Warning: use default input file number:%s\n", files_str.c_str() );
   }
@@ -216,6 +262,7 @@ int main(int argc, char *argv[]) {
   int file_num;
   std::tie(file_num,files) = GetFileList(files_str);
   int start_file = files[0];
+  printf("start_file %d\n", start_file);
   bool isSequential = CheckSequential(files);
   if (!isSequential) {
       fprintf (stderr, "please input sequential binlog num \n"  );
@@ -235,9 +282,9 @@ int main(int argc, char *argv[]) {
   } else {
     binlog_consumer = nullptr;
   }
-  
+
   Status s;
-  s = binlog_consumer->LoadFile(start_file);
+  s = binlog_consumer->LoadFile(start_file, offset);
   if(!s.ok()) {
       fprintf (stderr, "error while loading binlog file write2file%d : %s \n", start_file, s.ToString().c_str());
       exit(-1);
@@ -248,7 +295,7 @@ int main(int argc, char *argv[]) {
    */
   pink::PinkCli *rcli = pink::NewRedisCli();
   rcli->set_connect_timeout(3000);
-  fprintf (stderr, "Connecting...\n");
+  fprintf (stderr, "Connecting %s:%d\n", ip.c_str(), port);
   Status pink_s = rcli->Connect(ip, port);
   if (!pink_s.ok()) {
       fprintf (stderr, "Connect failed, %s\n", pink_s.ToString().c_str());
@@ -293,35 +340,57 @@ int main(int argc, char *argv[]) {
   int success_num = 0;
 
   FILE * error_fp;
-  error_fp = fopen("binlog_sender.error.log", "w");
+  error_fp = fopen("binlog2redis.error.log", "w");
   setvbuf(error_fp, NULL, _IONBF, 0);
   if (!error_fp) {
-      fprintf (stderr, "error opening binlog_sender.error.log\n");
+      fprintf (stderr, "error opening binlog2redis.error.log\n");
       exit(-1);
   }
   fprintf(error_fp, "This log contains data that failed to be sent");
 
   while (true){
     s = binlog_consumer->Parse(scratch, &produce_time);
+    // printf("scratch %s\n", scratch.c_str());
     if (s.IsEndFile()) {
       fprintf (stderr, "parse binlog file: %s finished\n", NewFileName(old_logger->filename, start_file++).c_str());
       finished_num ++;
       if (finished_num < file_num) {
         s = binlog_consumer->LoadNextFile();
         if (!s.ok()) {
-          fprintf (stderr, "error loading binlog file\n");
+          fprintf (stderr, "error loading %d binlog file\n", finished_num);
           exit(-1);
         }
       } else {
         break;
       }
     } else if (s.IsComplete()) {
+      finished_num ++;
+      if (finished_num < file_num) {
+        fprintf (stderr, "finished_num %d, end file num %d\n", finished_num, file_num);
+        do {
+          sleep(5);
+          s = binlog_consumer->LoadNextFile();
+        } while(!s.ok());
+        continue;
+      }
       fprintf (stderr,"all binlog parsed \n");
       break;
     } else if (s.ok()) {
       if (log_type == "new" && (produce_time < tv_start || produce_time > tv_end) && !(default_start_time && default_end_time)) {
         continue;
       }
+      if (scratch.find(SlotKeyPrefix_) != std::string::npos) {
+        fprintf (stderr, "pika internal migrate slot command:%s", scratch.c_str());
+        continue;
+      }
+
+      int ret = RemoveBinlogAffiliatedInfo(scratch);
+      if (ret != 0) {
+        fprintf (stderr, "can not remove binlog %s affiliated info\n", scratch.c_str());
+        continue;
+      }
+      // printf ("redis command %s\n", scratch.c_str());
+
       pink_s = rcli->Send(&scratch);
       if (pink_s.ok()) {
         pink_s = rcli->Recv(NULL);
@@ -344,6 +413,4 @@ int main(int argc, char *argv[]) {
   delete binlog_consumer;
   delete old_logger;
   return 0;
-
-  
-  }
+}

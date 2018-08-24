@@ -115,9 +115,10 @@ Binlog::Binlog(const std::string& binlog_path, const int file_size) :
     version_ = new Version(versionfile_);
     version_->StableSave();
   } else {
-    DLOG(INFO) << "Binlog: Find the exist file ";
+    DLOG(INFO) << "Binlog: Find the exist file " << manifest;
 
     s = slash::NewRWFile(manifest, &versionfile_);
+    DLOG(INFO) << "Binlog: open versionfile status " << s.ok();
     if (s.ok()) {
       version_ = new Version(versionfile_);
       version_->Init();
@@ -242,7 +243,7 @@ Status Binlog::Put(const char* item, int len) {
 
   return s;
 }
- 
+
 Status Binlog::EmitPhysicalRecord(RecordType t, const char *ptr, size_t n, int *temp_pro_offset) {
     Status s;
     assert(n <= 0xffffff);
@@ -321,7 +322,7 @@ Status Binlog::Produce(const Slice &item, int *temp_pro_offset) {
 
   return s;
 }
- 
+
 Status Binlog::AppendBlank(slash::WritableFile *file, uint64_t len) {
   if (len < kHeaderSize) {
     return Status::OK();

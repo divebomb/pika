@@ -13,7 +13,8 @@ THIRD_PATH = ../../third
 INCLUDE_PATH = -I../.. \
 			   -I$(THIRD_PATH)/glog/src/ \
 			   -I$(THIRD_PATH)/slash \
-			   -I$(THIRD_PATH)/pink
+			   -I$(THIRD_PATH)/pink \
+			   -I../../include
 
 LIB_PATH = -L./ \
 		   -L$(THIRD_PATH)/slash/slash/lib \
@@ -44,15 +45,15 @@ all: $(OBJECT)
 
 
 $(OBJECT): $(GLOG) $(PINK) $(SLASH) $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(INCLUDE_PATH) $(LIB_PATH)  $(LFLAGS) $(LIBS) 
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJS) $(INCLUDE_PATH) $(LIB_PATH)  $(LFLAGS) $(LIBS)
 
 $(OBJS): %.o : %.cc
-	$(CXX) $(CXXFLAGS) -c $< -o $@ $(INCLUDE_PATH) 
+	$(CXX) $(CXXFLAGS) -c $< -o $@ $(INCLUDE_PATH)
 
 $(TOBJS): %.o : %.cc
-	$(CXX) $(CXXFLAGS) -c $< -o $@ $(INCLUDE_PATH) 
+	$(CXX) $(CXXFLAGS) -c $< -o $@ $(INCLUDE_PATH)
 
-clean: 
+clean:
 	rm -rf $(SRC_DIR)/*.o
 	rm -rf $(OBJECT)
 

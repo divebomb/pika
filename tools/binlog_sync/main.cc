@@ -16,7 +16,7 @@ BinlogSync* g_binlog_sync;
 
 static void GlogInit(std::string& log_path, bool is_daemon) {
   if (!slash::FileExists(log_path)) {
-    slash::CreatePath(log_path); 
+    slash::CreatePath(log_path);
   }
 
   if (!is_daemon) {
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
   std::string passwd;
   std::string log_path = "./log/";
   bool is_daemon = false;
-//  std::cout << src_port << " " << dest_host << " " << dest_port << " " << filenum << " " << offset << " " << passwd << std::endl;
+// std::cout << src_port << " " << dest_host << " " << dest_port << " " << filenum << " " << offset << " " << passwd << std::endl;
   while (-1 != (c = getopt(argc, argv, "i:p:f:s:w:l:dh"))) {
     switch (c) {
       case 'i':
