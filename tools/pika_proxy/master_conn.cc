@@ -6,9 +6,9 @@
 #include <glog/logging.h>
 #include "master_conn.h"
 #include "binlog_receiver_thread.h"
-#include "binlog_proxy.h"
+#include "pika_proxy.h"
 
-extern BinlogProxy *g_binlog_proxy;
+extern PikaProxy *g_pika_proxy;
 
 MasterConn::MasterConn(int fd, std::string ip_port,
                        BinlogReceiverThread* binlog_receiver)
@@ -36,9 +36,9 @@ int MasterConn::DealMessage() {
 
   RestoreArgs();
 
-  //g_binlog_proxy->logger_->Lock();
-  g_binlog_proxy->logger()->Put(raw_args_);
-  //g_binlog_proxy->logger_->Unlock();
+  //g_pika_proxy->logger_->Lock();
+  g_pika_proxy->logger()->Put(raw_args_);
+  //g_pika_proxy->logger_->Unlock();
 
   return 0;
 }

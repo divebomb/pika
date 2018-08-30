@@ -27,6 +27,7 @@ private:
   bool RecvProc();
   void PrepareRsync();
   bool TryUpdateMasterOffset();
+  int  Retransmit();
 
   virtual void* ThreadMain();
 };

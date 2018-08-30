@@ -10,12 +10,12 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "binlog_proxy.h"
+#include "pika_proxy.h"
 #include "binlog_conf.h"
 
 BinlogConf g_binlog_conf;
 
-BinlogProxy* g_binlog_proxy;
+PikaProxy* g_pika_proxy;
 
 static void GlogInit(std::string& log_path, bool is_daemon) {
   if (!slash::FileExists(log_path)) {
@@ -29,7 +29,7 @@ static void GlogInit(std::string& log_path, bool is_daemon) {
   FLAGS_minloglevel = 0;
   FLAGS_max_log_size = 1800;
   FLAGS_logbufsecs = 0;
-  ::google::InitGoogleLogging("BinlogProxy");
+  ::google::InitGoogleLogging("PikaProxy");
 }
 
 static void daemonize() {
@@ -49,7 +49,7 @@ static void close_std() {
 
 static void IntSigHandle(const int sig) {
   DLOG(INFO) << "Catch Signal " << sig << ", cleanup...";
-  g_binlog_proxy->UnLock();
+  g_pika_proxy->UnLock();
 }
 
 static void SignalSetup() {
@@ -63,19 +63,26 @@ static void SignalSetup() {
 static void Usage()
 {
     fprintf(stderr,
-            "Usage: binlog_proxy [-h] [-t local_ip -p local_port -i master_ip -o master_port -f filenum -s offset -w password -r rsync_dump_path  -l log_path]\n"
+            "Usage: pika_proxy [-h] [-t local_ip -p local_port -i master_ip -o master_port "
+			"-m forward_ip -n forward_port -x forward_thread_num -y forward_passwd]\n"
+			"-f filenum -s offset -w password -r rsync_dump_path  -l log_path "
             "\t-h               -- show this help\n"
-            "\t-s     -- local host ip(OPTIONAL default: 127.0.0.1) \n"
+            "\t-t     -- local host ip(OPTIONAL default: 127.0.0.1) \n"
             "\t-p     -- local port(OPTIONAL) \n"
             "\t-i     -- master ip(OPTIONAL default: 127.0.0.1) \n"
             "\t-o     -- master port(REQUIRED) \n"
+            "\t-m     -- forward ip(OPTIONAL default: 127.0.0.1) \n"
+            "\t-n     -- forward port(REQUIRED) \n"
+            "\t-x     -- forward thread num(OPTIONAL default: 1) \n"
+            "\t-y     -- forward password(OPTIONAL) \n"
             "\t-f     -- binlog filenum(OPTIONAL default: local offset) \n"
             "\t-s     -- binlog offset(OPTIONAL default: local offset) \n"
             "\t-w     -- password for master(OPTIONAL) \n"
             "\t-r     -- rsync dump data path(OPTIONAL default: ./rsync_dump) \n"
             "\t-l     -- local log path(OPTIONAL default: ./log) \n"
             "\t-d     -- daemonize(OPTIONAL) \n"
-            "  example: ./binlog_proxy -t 127.0.0.1 -p 12345 -i 127.0.0.1 -o 9221 -f 0 -s 0 -w abc -l ./log -r ./rsync_dump -d\n"
+            "  example: ./pika_proxy -t 127.0.0.1 -p 12345 -i 127.0.0.1 -o 9221 "
+			"-m 127.0.0.1 -n 6379 -x 7 -f 0 -s 0 -w abc -l ./log -r ./rsync_dump -d\n"
            );
 }
 
@@ -89,7 +96,7 @@ int main(int argc, char *argv[]) {
   char buf[1024];
   bool is_daemon = false;
   long num = 0;
-  while (-1 != (c = getopt(argc, argv, "t:p:i:o:f:s:w:r:l:dh"))) {
+  while (-1 != (c = getopt(argc, argv, "t:p:i:o:f:s:w:r:l:m:n:x:y:dh"))) {
     switch (c) {
       case 't':
         snprintf(buf, 1024, "%s", optarg);
@@ -109,6 +116,25 @@ int main(int argc, char *argv[]) {
         slash::string2l(buf, strlen(buf), &(num));
         g_binlog_conf.master_port = int(num);
         break;
+      case 'm':
+        snprintf(buf, 1024, "%s", optarg);
+        g_binlog_conf.forward_ip = std::string(buf);
+        break;
+      case 'n':
+        snprintf(buf, 1024, "%s", optarg);
+        slash::string2l(buf, strlen(buf), &(num));
+        g_binlog_conf.forward_port = int(num);
+        break;
+      case 'x':
+        snprintf(buf, 1024, "%s", optarg);
+        slash::string2l(buf, strlen(buf), &(num));
+        g_binlog_conf.forward_thread_num = int(num);
+        break;
+      case 'y':
+        snprintf(buf, 1024, "%s", optarg);
+        g_binlog_conf.forward_passwd = std::string(buf);
+        break;
+
       case 'f':
         snprintf(buf, 1024, "%s", optarg);
         slash::string2l(buf, strlen(buf), &(num));
@@ -123,6 +149,7 @@ int main(int argc, char *argv[]) {
         snprintf(buf, 1024, "%s", optarg);
         g_binlog_conf.passwd = std::string(buf);
         break;
+
       case 'r':
         snprintf(buf, 1024, "%s", optarg);
         g_binlog_conf.dump_path = std::string(buf);
@@ -161,12 +188,16 @@ int main(int argc, char *argv[]) {
             << "local_port:" << g_binlog_conf.local_port << " "
             << "master_ip:"  << g_binlog_conf.master_ip << " "
             << "master_port:"  << g_binlog_conf.master_port << " "
+            << "forward_ip:"  << g_binlog_conf.forward_ip << " "
+            << "forward_port:"  << g_binlog_conf.forward_port << " "
+            << "forward_passwd:"  << g_binlog_conf.forward_passwd << " "
+            << "forward_thread_num:" << g_binlog_conf.forward_thread_num << " "
             << "log_path:"   << g_binlog_conf.log_path << " "
             << "dump_path:"  << g_binlog_conf.dump_path << " "
             << "filenum:"    << g_binlog_conf.filenum << " "
             << "offset:"     << g_binlog_conf.offset << " "
             << "passwd:"     << g_binlog_conf.passwd << std::endl;
-  if (g_binlog_conf.master_port == 0) {
+  if (g_binlog_conf.master_port == 0 || g_binlog_conf.forward_port == 0) {
     fprintf (stderr, "Invalid Arguments\n" );
     Usage();
     exit(-1);
@@ -180,7 +211,7 @@ int main(int argc, char *argv[]) {
   GlogInit(g_binlog_conf.log_path, is_daemon);
   SignalSetup();
 
-  g_binlog_proxy = new BinlogProxy(
+  g_pika_proxy = new PikaProxy(
     g_binlog_conf.filenum,
     g_binlog_conf.offset,
     g_binlog_conf.local_ip,
@@ -195,7 +226,7 @@ int main(int argc, char *argv[]) {
     close_std();
   }
 
-  g_binlog_proxy->Start();
+  g_pika_proxy->Start();
 
   return 0;
 }

@@ -17,10 +17,11 @@
 #include "include/pika_define.h"
 
 #include "trysync_thread.h"
-#include "binlog_proxy.h"
+#include "pika_proxy.h"
 #include "binlog_conf.h"
+#include "binlog_const.h"
 
-extern BinlogProxy* g_binlog_proxy;
+extern PikaProxy* g_pika_proxy;
 
 TrysyncThread::~TrysyncThread() {
   StopThread();
@@ -42,7 +43,7 @@ void TrysyncThread::PrepareRsync() {
 bool TrysyncThread::Send() {
   pink::RedisCmdArgsType argv;
   std::string wbuf_str;
-  std::string requirepass = g_binlog_proxy->requirepass();
+  std::string requirepass = g_pika_proxy->requirepass();
   if (requirepass != "") {
     argv.push_back("auth");
     argv.push_back(requirepass);
@@ -52,13 +53,13 @@ bool TrysyncThread::Send() {
   argv.clear();
   std::string tbuf_str;
   argv.push_back("trysync");
-  // argv.push_back(g_binlog_proxy->host());
-  // argv.push_back(std::to_string(g_binlog_proxy->port()));
+  // argv.push_back(g_pika_proxy->host());
+  // argv.push_back(std::to_string(g_pika_proxy->port()));
   argv.push_back(g_binlog_conf.local_ip);
   argv.push_back(std::to_string(g_binlog_conf.local_port));
   uint32_t filenum;
   uint64_t pro_offset;
-  g_binlog_proxy->logger()->GetProducerStatus(&filenum, &pro_offset);
+  g_pika_proxy->logger()->GetProducerStatus(&filenum, &pro_offset);
   LOG(WARNING) << "producer filenum: " << filenum << ", producer offset:" << pro_offset;
   
   argv.push_back(std::to_string(filenum));
@@ -67,7 +68,8 @@ bool TrysyncThread::Send() {
   pink::SerializeRedisCommand(argv, &tbuf_str);
 
   wbuf_str.append(tbuf_str);
-  // DLOG(DEBUG) << wbuf_str;
+  DLOG(INFO) << "redis command: trysync " << g_binlog_conf.local_ip << " "
+             << g_binlog_conf.local_port << " " << filenum << " " << pro_offset;
 
   slash::Status s;
   s = cli_->Send(&wbuf_str);
@@ -82,7 +84,7 @@ bool TrysyncThread::Send() {
 // if send command {trysync slaveip slaveport 11 38709514}, the reply = "sid:.
 // it means that slave sid is allocated by master.
 bool TrysyncThread::RecvProc() {
-  bool should_auth = g_binlog_proxy->requirepass() == "" ? false : true;
+  bool should_auth = g_pika_proxy->requirepass() == "" ? false : true;
   bool is_authed = false;
   slash::Status s;
   std::string reply;
@@ -99,7 +101,7 @@ bool TrysyncThread::RecvProc() {
     DLOG(INFO) << "Reply from master after trysync: " << reply;
     if (!is_authed && should_auth) {
       if (kInnerReplOk != slash::StringToLower(reply)) {
-        g_binlog_proxy->RemoveMaster();
+        g_pika_proxy->RemoveMaster();
         return false;
       }
       is_authed = true;
@@ -109,7 +111,7 @@ bool TrysyncThread::RecvProc() {
           slash::string2l(reply.data(), reply.size(), &sid_)) {
         // Luckly, I got your point, the sync is comming
         DLOG(INFO) << "Recv sid from master: " << sid_;
-        g_binlog_proxy->SetSid(sid_);
+        g_pika_proxy->SetSid(sid_);
         break;
       }
 
@@ -121,12 +123,12 @@ bool TrysyncThread::RecvProc() {
         // 2, Master waiting for an existing bgsaving process
         // 3, Master do dbsyncing
         LOG(INFO) << "Need wait to sync";
-        g_binlog_proxy->NeedWaitDBSync();
+        g_pika_proxy->NeedWaitDBSync();
         // break;
       } else {
         LOG(INFO) << "Sync Error, Quit";
         kill(getpid(), SIGQUIT);
-        g_binlog_proxy->RemoveMaster();
+        g_pika_proxy->RemoveMaster();
       }
       return false;
     }
@@ -195,18 +197,115 @@ bool TrysyncThread::TryUpdateMasterOffset() {
   slash::DeleteFile(info_path);
 
   // Update master offset
-  g_binlog_proxy->logger()->SetProducerStatus(filenum, offset);
-  g_binlog_proxy->WaitDBSyncFinish();
+  g_pika_proxy->logger()->SetProducerStatus(filenum, offset);
+  Retransmit();
+  g_pika_proxy->WaitDBSyncFinish();
   // g_pika_server->SetForceFullSync(false);
 
   return true;
+}
+
+#include <iostream>
+#include <sstream>
+#include <vector>
+#include <memory>
+
+#include "nemo.h"
+#include "sender.h"
+#include "migrator_thread.h"
+
+using std::chrono::high_resolution_clock;
+using std::chrono::milliseconds;
+
+int TrysyncThread::Retransmit() {
+  std::string db_path = g_binlog_conf.dump_path;
+  std::string ip = g_binlog_conf.forward_ip;
+  int port = g_binlog_conf.forward_port;
+  size_t thread_num = g_binlog_conf.forward_thread_num;
+  std::string password = g_binlog_conf.forward_passwd;
+  
+  std::vector<Sender*> senders;
+  std::vector<std::unique_ptr<MigratorThread>> migrators;
+  std::unique_ptr<nemo::Nemo> db;
+
+  high_resolution_clock::time_point start = high_resolution_clock::now();
+  if (db_path[db_path.length() - 1] != '/') {
+    db_path.append("/");
+  }
+
+  // Init db
+  nemo::Options option;
+  option.write_buffer_size = 512 * 1024 * 1024; // 512M
+  option.target_file_size_base = 40 * 1024 * 1024; // 40M
+  db = std::unique_ptr<nemo::Nemo>(new nemo::Nemo(db_path, option));
+
+  // Open Options
+  rocksdb::Options open_options_;
+  open_options_.create_if_missing = true;
+  open_options_.write_buffer_size = 256 * 1024 * 1024; // 256M
+  open_options_.max_manifest_file_size = 64*1024*1024;
+  open_options_.max_log_file_size = 512*1024*1024;
+  open_options_.keep_log_file_num = 10;
+
+  // Init SenderThread
+  for (size_t i = 0; i < thread_num; i++) {
+    senders.emplace_back(new Sender(db.get(), ip, port, password));
+  }
+
+  migrators.emplace_back(new MigratorThread(db.get(), &senders, nemo::DataType::kKv, thread_num));
+  migrators.emplace_back(new MigratorThread(db.get(), &senders, nemo::DataType::kHSize, thread_num));
+  migrators.emplace_back(new MigratorThread(db.get(), &senders, nemo::DataType::kSSize, thread_num));
+  migrators.emplace_back(new MigratorThread(db.get(), &senders, nemo::DataType::kLMeta, thread_num));
+  migrators.emplace_back(new MigratorThread(db.get(), &senders, nemo::DataType::kZSize, thread_num));
+
+  // start threads
+  for (size_t i = 0; i < kDataSetNum; i++) {
+    migrators[i]->StartThread();
+  }
+  for (size_t i = 0; i < thread_num; i++) {
+    senders[i]->StartThread();
+  }
+
+  for(size_t i = 0; i < kDataSetNum; i++) {
+    migrators[i]->JoinThread();
+  }
+  for(size_t i = 0; i < thread_num; i++) {
+    senders[i]->Stop();
+  }
+  for (size_t i = 0; i < thread_num; i++) {
+    senders[i]->JoinThread();
+  }
+
+  int64_t replies = 0, records = 0;
+  // for (size_t i = 0; i < kDataSetNum; i++) {
+  //   records += migrators[i]->num();
+  //   delete migrators[i];
+  // }
+  for (size_t i = 0; i < thread_num; i++) {
+    replies += senders[i]->elements();
+    delete senders[i];
+  }
+
+  high_resolution_clock::time_point end = high_resolution_clock::now();
+  std::chrono::hours  h = std::chrono::duration_cast<std::chrono::hours>(end - start);
+  std::chrono::minutes  m = std::chrono::duration_cast<std::chrono::minutes>(end - start);
+  std::chrono::seconds  s = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+
+  DLOG(INFO) << "=============== Retransmitting =====================" << std::endl;
+  DLOG(INFO) << "Running time  :";
+  DLOG(INFO) << h.count() << " hour " << m.count() - h.count() * 60 << " min " << s.count() - h.count() * 60 * 60 << " s";
+  DLOG(INFO) << "Total records : " << records << " have been Scaned";
+  DLOG(INFO) << "Total replies : " << replies << " received from redis server";
+  // delete db
+
+  return 0;
 }
 
 void* TrysyncThread::ThreadMain() {
   while (!should_stop()) {
     sleep(1);
 
-    if (g_binlog_proxy->WaitingDBSync()) {
+    if (g_pika_proxy->IsWaitingDBSync()) {
       LOG(INFO) << "Waiting db sync";
       //Try to update offset by db sync
       if (TryUpdateMasterOffset()) {
@@ -214,7 +313,13 @@ void* TrysyncThread::ThreadMain() {
       }
     }
 
-    if (!g_binlog_proxy->ShouldConnectMaster()) {
+	// if (g_pika_proxy->IsWaitingRetransmitting()) {
+    //   LOG(INFO) << "Waiting retransmitting";
+	//   if () {
+	//   }
+	// }
+
+    if (!g_pika_proxy->ShouldConnectMaster()) {
       continue;
     }
     sleep(2);
@@ -240,13 +345,13 @@ void* TrysyncThread::ThreadMain() {
       cli_->set_send_timeout(5000);
       cli_->set_recv_timeout(5000);
       if (Send() && RecvProc()) {
-        g_binlog_proxy->ConnectMasterDone();
+        g_pika_proxy->ConnectMasterDone();
         // Stop rsync, binlog sync with master is begin
         slash::StopRsync(dbsync_path);
         
-        delete g_binlog_proxy->ping_thread_;
-        g_binlog_proxy->ping_thread_ = new SlavepingThread(sid_);
-        g_binlog_proxy->ping_thread_->StartThread();
+        delete g_pika_proxy->ping_thread_;
+        g_pika_proxy->ping_thread_ = new SlavepingThread(sid_);
+        g_pika_proxy->ping_thread_->StartThread();
         DLOG(INFO) << "Trysync success";
       }
       cli_->Close();

@@ -8,11 +8,11 @@
 #include "pink/include/pink_conn.h"
 #include "binlog_receiver_thread.h"
 #include "master_conn.h"
-#include "binlog_proxy.h"
+#include "pika_proxy.h"
 
 #include "binlog_log.h"
 
-extern BinlogProxy* g_binlog_proxy;
+extern PikaProxy* g_pika_proxy;
 
 BinlogReceiverThread::BinlogReceiverThread(int port, int cron_interval)
       : conn_factory_(this),
@@ -36,15 +36,15 @@ int BinlogReceiverThread::StartThread() {
 
 bool BinlogReceiverThread::PikaBinlogReceiverHandles::AccessHandle(std::string& ip) const {
   if (ip == "127.0.0.1") {
-    ip = g_binlog_proxy->host();
+    ip = g_pika_proxy->host();
   }
   pinfo("$$$$$$$$$$$$$$$$$$$$ hello3");
   if (binlog_receiver_->thread_rep_->conn_num() != 0 ||
-      !g_binlog_proxy->ShouldAccessConnAsMaster(ip)) {
+      !g_pika_proxy->ShouldAccessConnAsMaster(ip)) {
     DLOG(INFO) << "BinlogReceiverThread AccessHandle failed";
     return false;
   }
-  g_binlog_proxy->PlusMasterConnection();
+  g_pika_proxy->PlusMasterConnection();
   return true;
 }
 

@@ -6,9 +6,9 @@
 #include <glog/logging.h>
 #include <poll.h>
 #include "slaveping_thread.h"
-#include "binlog_proxy.h"
+#include "pika_proxy.h"
 
-extern BinlogProxy* g_binlog_proxy;
+extern PikaProxy* g_pika_proxy;
 
 Status SlavepingThread::Send() {
   std::string wbuf_str;
@@ -48,17 +48,17 @@ void* SlavepingThread::ThreadMain() {
   last_interaction = now;
   Status s;
   int connect_retry_times = 0;
-  while (!should_stop() && g_binlog_proxy->ShouldStartPingMaster()) {
-    if (!should_stop() && (cli_->Connect(g_binlog_proxy->master_ip(), g_binlog_proxy->master_port() + 2000)).ok()) {
+  while (!should_stop() && g_pika_proxy->ShouldStartPingMaster()) {
+    if (!should_stop() && (cli_->Connect(g_pika_proxy->master_ip(), g_pika_proxy->master_port() + 2000)).ok()) {
       cli_->set_send_timeout(1000);
       cli_->set_recv_timeout(1000);
       connect_retry_times = 0;
-      g_binlog_proxy->PlusMasterConnection();
+      g_pika_proxy->PlusMasterConnection();
       while (true) {
         if (should_stop()) {
           DLOG(INFO) << "Close Slaveping Thread now";
           close(cli_->fd());
-          g_binlog_proxy->binlog_receiver_thread()->KillBinlogSender();
+          g_pika_proxy->binlog_receiver_thread()->KillBinlogSender();
           break;
         }
 
@@ -76,24 +76,24 @@ void* SlavepingThread::ThreadMain() {
             //timeout;
             DLOG(INFO) << "Ping master timeout";
             close(cli_->fd());
-            g_binlog_proxy->binlog_receiver_thread()->KillBinlogSender();
+            g_pika_proxy->binlog_receiver_thread()->KillBinlogSender();
             break;
           }
         } else {
           DLOG(INFO) << "Ping master error";
           close(cli_->fd());
-          g_binlog_proxy->binlog_receiver_thread()->KillBinlogSender();
+          g_pika_proxy->binlog_receiver_thread()->KillBinlogSender();
           break;
         }
         sleep(1);
       }
-      g_binlog_proxy->MinusMasterConnection();
+      g_pika_proxy->MinusMasterConnection();
     } else if (!should_stop()) {
       DLOG(INFO) << "Slaveping, Connect timeout";
       if ((++connect_retry_times) >= 30) {
         DLOG(INFO) << "Slaveping, Connect timeout 10 times, disconnect with master";
         close(cli_->fd());
-        g_binlog_proxy->binlog_receiver_thread()->KillBinlogSender();
+        g_pika_proxy->binlog_receiver_thread()->KillBinlogSender();
         connect_retry_times = 0;
       }
     }

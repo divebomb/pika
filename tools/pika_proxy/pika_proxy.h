@@ -17,10 +17,10 @@
 using slash::Status;
 using slash::Slice;
 
-class BinlogProxy
+class PikaProxy
 {
 public:
-  BinlogProxy(
+  PikaProxy(
     int64_t filenum,
     int64_t offset,
     std::string& local_ip,
@@ -31,7 +31,7 @@ public:
     std::string& log_path,
     std::string& dump_path
   );
-  ~BinlogProxy();
+  ~PikaProxy();
 
   /*
    * Get & Set 
@@ -92,9 +92,11 @@ public:
   void PlusMasterConnection();
   bool ShouldAccessConnAsMaster(const std::string& ip);
   void RemoveMaster();
-  bool WaitingDBSync();
+  bool IsWaitingDBSync();
   void NeedWaitDBSync();
   void WaitDBSyncFinish();
+  bool IsWaitingRetransmitting();
+  void CompleteRetransmit();
 
   void Start();
   void Cleanup();
@@ -129,8 +131,8 @@ private:
 
   pthread_rwlock_t state_protector_; //protect below, use for master-slave mode
 
-  BinlogProxy(BinlogProxy &bs);
-  void operator =(const BinlogProxy &bs);
+  PikaProxy(PikaProxy &bs);
+  void operator =(const PikaProxy &bs);
 };
 
 #endif

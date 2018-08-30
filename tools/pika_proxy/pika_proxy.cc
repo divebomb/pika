@@ -14,9 +14,10 @@
 #include "slash/include/env.h"
 #include "slash/include/slash_string.h"
 #include "slash/include/rsync.h"
-#include "binlog_proxy.h"
+#include "pika_proxy.h"
+#include "binlog_const.h"
 
-BinlogProxy::BinlogProxy(
+PikaProxy::PikaProxy(
     int64_t filenum,
     int64_t offset,
     std::string& local_ip,
@@ -36,7 +37,7 @@ BinlogProxy::BinlogProxy(
   master_ip_(master_ip),
   master_port_(master_port),
   master_connection_(0),
-  role_(PIKA_ROLE_SINGLE),
+  role_(PIKA_ROLE_PROXY),
   repl_state_(PIKA_REPL_NO_CONNECT),
   requirepass_(passwd),
   log_path_(log_path),
@@ -60,7 +61,7 @@ BinlogProxy::BinlogProxy(
   logger_ = new Binlog(log_path, 104857600);
 }
 
-BinlogProxy::~BinlogProxy() {
+PikaProxy::~PikaProxy() {
   LOG(INFO) << "Ending...";
   delete trysync_thread_;
   delete ping_thread_;
@@ -71,15 +72,15 @@ BinlogProxy::~BinlogProxy() {
   pthread_rwlock_destroy(&state_protector_);
   pthread_rwlock_destroy(&rwlock_);
 
-  DLOG(INFO) << "BinlogProxy " << pthread_self() << " exit!!!";
+  DLOG(INFO) << "PikaProxy " << pthread_self() << " exit!!!";
 }
 
-bool BinlogProxy::Init() {
+bool PikaProxy::Init() {
   // DLOG(INFO) << "host: " << host_ << " port: " << port_;
   return true;
 }
 
-void BinlogProxy::Cleanup() {
+void PikaProxy::Cleanup() {
   // shutdown server
 //  if (g_pika_conf->daemonize()) {
 //    unlink(g_pika_conf->pidfile().c_str());
@@ -89,7 +90,7 @@ void BinlogProxy::Cleanup() {
   ::google::ShutdownGoogleLogging();
 }
 
-void BinlogProxy::Start() {
+void PikaProxy::Start() {
   trysync_thread_->StartThread();
   binlog_receiver_thread_->StartThread();
 
@@ -105,7 +106,7 @@ void BinlogProxy::Start() {
   Cleanup();
 }
 
-bool BinlogProxy::SetMaster(std::string& master_ip, int master_port) {
+bool PikaProxy::SetMaster(std::string& master_ip, int master_port) {
   slash::RWLock l(&state_protector_, true);
   if ((role_ ^ PIKA_ROLE_SLAVE) && repl_state_ == PIKA_REPL_NO_CONNECT) {
     master_ip_ = master_ip;
@@ -118,47 +119,53 @@ bool BinlogProxy::SetMaster(std::string& master_ip, int master_port) {
   return false;
 }
 
-bool BinlogProxy::ShouldConnectMaster() {
+bool PikaProxy::ShouldConnectMaster() {
   slash::RWLock l(&state_protector_, false);
-  DLOG(INFO) << "repl_state: " << repl_state_ << " role: " << role_ << " master_connection: " << master_connection_;
+  DLOG(INFO) << "repl_state: " << PikaState(repl_state_)
+             << " role: " << PikaRole(role_)
+			 << " master_connection: " << master_connection_;
   if (repl_state_ == PIKA_REPL_CONNECT) {
     return true;
   }
   return false;
 }
 
-void BinlogProxy::ConnectMasterDone() {
+void PikaProxy::ConnectMasterDone() {
   slash::RWLock l(&state_protector_, true);
   if (repl_state_ == PIKA_REPL_CONNECT) {
     repl_state_ = PIKA_REPL_CONNECTING;
   }
 }
 
-bool BinlogProxy::ShouldStartPingMaster() {
+bool PikaProxy::ShouldStartPingMaster() {
   slash::RWLock l(&state_protector_, false);
-  DLOG(INFO) << "ShouldStartPingMaster: master_connection " << master_connection_ << " repl_state " << repl_state_;
+  DLOG(INFO) << "ShouldStartPingMaster: master_connection " << master_connection_
+             << " repl_state " << PikaState(repl_state_);
   if (repl_state_ == PIKA_REPL_CONNECTING && master_connection_ < 2) {
     return true;
   }
+
   return false;
 }
 
-void BinlogProxy::MinusMasterConnection() {
+void PikaProxy::MinusMasterConnection() {
   slash::RWLock l(&state_protector_, true);
   if (master_connection_ > 0) {
     if ((--master_connection_) <= 0) {
       // two connection with master has been deleted
       if (role_ & PIKA_ROLE_SLAVE) {
-        repl_state_ = PIKA_REPL_CONNECT; // not change by slaveof no one, so set repl_state = PIKA_REPL_CONNECT, continue to connect master
+		// not change by slaveof no one, so set repl_state = PIKA_REPL_CONNECT, continue to connect master
+        repl_state_ = PIKA_REPL_CONNECT;
       } else {
-        repl_state_ = PIKA_REPL_NO_CONNECT; // change by slaveof no one, so set repl_state = PIKA_REPL_NO_CONNECT, reset to SINGLE state
+		// change by slaveof no one, so set repl_state = PIKA_REPL_NO_CONNECT, reset to SINGLE state
+        repl_state_ = PIKA_REPL_NO_CONNECT;
       }
       master_connection_ = 0;
     }
   }
 }
 
-void BinlogProxy::PlusMasterConnection() {
+void PikaProxy::PlusMasterConnection() {
   slash::RWLock l(&state_protector_, true);
   if (master_connection_ < 2) {
     if ((++master_connection_) >= 2) {
@@ -170,23 +177,23 @@ void BinlogProxy::PlusMasterConnection() {
   }
 }
 
-bool BinlogProxy::ShouldAccessConnAsMaster(const std::string& ip) {
+bool PikaProxy::ShouldAccessConnAsMaster(const std::string& ip) {
   slash::RWLock l(&state_protector_, false);
-  DLOG(INFO) << "ShouldAccessConnAsMaster, repl_state_: " << repl_state_ << " ip: " << ip << " master_ip: " << master_ip_;
+  DLOG(INFO) << "ShouldAccessConnAsMaster, repl_state_: " << PikaState(repl_state_)
+         << " ip: " << ip << " master_ip: " << master_ip_;
   if (repl_state_ != PIKA_REPL_NO_CONNECT && ip == master_ip_) {
     return true;
   }
   return false;
 }
 
-void BinlogProxy::RemoveMaster() {
-
+void PikaProxy::RemoveMaster() {
   {
-  slash::RWLock l(&state_protector_, true);
-  repl_state_ = PIKA_REPL_NO_CONNECT;
-  role_ &= ~PIKA_ROLE_SLAVE;
-  master_ip_ = "";
-  master_port_ = -1;
+    slash::RWLock l(&state_protector_, true);
+    repl_state_ = PIKA_REPL_NO_CONNECT;
+    role_ &= ~PIKA_ROLE_SLAVE;
+    master_ip_ = "";
+    master_port_ = -1;
   }
   if (ping_thread_ != NULL) {
     int err = ping_thread_->StopThread();
@@ -199,23 +206,42 @@ void BinlogProxy::RemoveMaster() {
   }
 }
 
-bool BinlogProxy::WaitingDBSync() {
+bool PikaProxy::IsWaitingDBSync() {
   slash::RWLock l(&state_protector_, false);
-  DLOG(INFO) << "repl_state: " << repl_state_ << " role: " << role_ << " master_connection: " << master_connection_;
+  // DLOG(INFO) << "repl_state: " << PikaState(repl_state_)
+  //     << " role: " << PikaRole(role_) << " master_connection: " << master_connection_;
   if (repl_state_ == PIKA_REPL_WAIT_DBSYNC) {
     return true;
   }
   return false;
 }
 
-void BinlogProxy::NeedWaitDBSync() {
+void PikaProxy::NeedWaitDBSync() {
   slash::RWLock l(&state_protector_, true);
   repl_state_ = PIKA_REPL_WAIT_DBSYNC;
 }
 
-void BinlogProxy::WaitDBSyncFinish() {
+void PikaProxy::WaitDBSyncFinish() {
   slash::RWLock l(&state_protector_, true);
   if (repl_state_ == PIKA_REPL_WAIT_DBSYNC) {
+    repl_state_ = PIKA_REPL_CONNECT;
+    // repl_state_ = PIKA_REPL_RETRANSMIT;
+  }
+}
+
+bool PikaProxy::IsWaitingRetransmitting() {
+  slash::RWLock l(&state_protector_, false);
+  // DLOG(INFO) << "repl_state: " << PikaState(repl_state_)
+  //     << " role: " << PikaRole(role_) << " master_connection: " << master_connection_;
+  if (repl_state_ == PIKA_REPL_RETRANSMIT) {
+    return true;
+  }
+  return false;
+}
+
+void PikaProxy::CompleteRetransmit() {
+  slash::RWLock l(&state_protector_, true);
+  if (repl_state_ == PIKA_REPL_RETRANSMIT) {
     repl_state_ = PIKA_REPL_CONNECT;
   }
 }

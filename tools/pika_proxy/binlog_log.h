@@ -9,8 +9,5 @@
     fprintf(stderr, "\033[1;31;40m%s-%s-%d: error: "fmt"\033[0m\n", \
             (char*)__FILE__, (char*)__func__, (int)__LINE__, ##__VA_ARGS__)
 
-#define FATAL  perr
-#define DEBUG  pinfo
-
 #endif
 

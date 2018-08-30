@@ -8,12 +8,7 @@
 //#define PIKA_REPL_CONNECTED 3
 //#define PIKA_REPL_WAIT_DBSYNC 4
 //#define PIKA_REPL_ERROR 5
-#define PIKA_REPL_RETRANS 6
-
-#include <string>
-std::string PikaState(int state);
-
-std::string PikaRole(int role) ;
+#define PIKA_REPL_RETRANSMIT 6
 
 // //role
 // #define PIKA_ROLE_SINGLE 0
@@ -22,5 +17,16 @@ std::string PikaRole(int role) ;
 // #define PIKA_ROLE_DOUBLE_MASTER 3
 #define PIKA_ROLE_PROXY 4
 
+#include <limits.h>
+#include <stdint.h>
+
+const int64_t kTestPoint = 500000;
+const int64_t kTestNum = LLONG_MAX;
+const int64_t kDataSetNum = 5;
+
+#include <string>
+std::string PikaState(int state);
+std::string PikaRole(int role) ;
 
 #endif
+
