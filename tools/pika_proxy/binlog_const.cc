@@ -22,9 +22,6 @@ std::string PikaState(int state) {
     case PIKA_REPL_ERROR:
     return "PIKA_REPL_ERROR";
 
-    case PIKA_REPL_RETRANSMIT:
-    return "PIKA_REPL_RETRANSMIT";
-
     default:
     return "PIKA_REPL_UNKNOWN";
   }
@@ -34,23 +31,23 @@ std::string PikaState(int state) {
 
 std::string PikaRole(int role) {
   std::string roleStr = "|";
-  if (role | PIKA_ROLE_SINGLE) {
+  if (role == PIKA_ROLE_SINGLE) {
     roleStr += " PIKA_ROLE_SINGLE |";
   }
 
-  if (role | PIKA_ROLE_SLAVE) {
+  if (role == PIKA_ROLE_SLAVE) {
     roleStr += " PIKA_ROLE_SLAVE |";
   }
 
-  if (role | PIKA_ROLE_MASTER) {
+  if (role == PIKA_ROLE_MASTER) {
     roleStr += " PIKA_ROLE_MASTER |";
   }
 
-  if (role | PIKA_ROLE_DOUBLE_MASTER) {
+  if (role == PIKA_ROLE_DOUBLE_MASTER) {
     roleStr += " PIKA_ROLE_DOUBLE_MASTER |";
   }
 
-  if (role | PIKA_ROLE_PROXY) {
+  if (role == PIKA_ROLE_PROXY) {
     roleStr += " PIKA_ROLE_PROXY |";
   }
 

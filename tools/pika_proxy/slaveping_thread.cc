@@ -21,6 +21,7 @@ Status SlavepingThread::Send() {
     pink::SerializeRedisCommand(argv, &wbuf_str);
     is_first_send_ = false;
   }
+
   DLOG(INFO) << wbuf_str;
   return cli_->Send(&wbuf_str);
 }

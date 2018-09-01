@@ -16,6 +16,92 @@
 #include "slash/include/rsync.h"
 #include "pika_proxy.h"
 #include "binlog_const.h"
+#include "binlog_conf.h"
+
+void PikaProxy::ConnectRedis() {
+  while (cli_ == NULL) {
+    // Connect to redis
+    cli_ = pink::NewRedisCli();
+    cli_->set_connect_timeout(1000);
+    slash::Status s = cli_->Connect(g_binlog_conf.forward_ip, g_binlog_conf.forward_port);
+    if (!s.ok()) {
+      cli_ = NULL;
+      LOG(INFO) << "Can not connect to " << g_binlog_conf.forward_ip.data() << ":"
+	            << g_binlog_conf.forward_port << ", status:" << s.ToString();
+      continue;
+    } else {
+      // Connect success
+      LOG(INFO) << "Connect to " << g_binlog_conf.forward_ip.data() << ":"
+	            << g_binlog_conf.forward_port << ", status:" << s.ToString();
+      // Authentication
+      if (!g_binlog_conf.forward_passwd.empty()) {
+        pink::RedisCmdArgsType argv, resp;
+        std::string cmd;
+
+        argv.push_back("AUTH");
+        argv.push_back(g_binlog_conf.forward_passwd);
+        pink::SerializeRedisCommand(argv, &cmd);
+        slash::Status s = cli_->Send(&cmd);
+
+        if (s.ok()) {
+          s = cli_->Recv(&resp);
+          if (resp[0] == "OK") {
+            LOG(INFO) << "Authentic success";
+          } else {
+            cli_->Close();
+            LOG(WARNING) << "Invalid password";
+            cli_ = NULL;
+            should_exit_ = true;
+            return;
+          }
+        } else {
+         cli_->Close();
+          LOG(INFO) << s.ToString();
+          cli_ = NULL;
+          continue;
+        }
+      } else {
+        // If forget to input password
+        pink::RedisCmdArgsType argv, resp;
+        std::string cmd;
+
+        argv.push_back("PING");
+        pink::SerializeRedisCommand(argv, &cmd);
+        slash::Status s = cli_->Send(&cmd);
+
+        if (s.ok()) {
+          s = cli_->Recv(&resp);
+          if (s.ok()) {
+            if (resp[0] == "NOAUTH Authentication required.") {
+              cli_->Close();
+              LOG(WARNING) << "Authentication required";
+              cli_ = NULL;
+              should_exit_ = true;
+              return;
+            }
+          } else {
+            cli_->Close();
+            LOG(INFO) <<  s.ToString();
+            cli_ = NULL;
+          }
+        }
+      }
+    }
+  }
+}
+
+int PikaProxy::SendRedisCommand(std::string &command) {
+  // Send command
+  slash::Status s = cli_->Send(&command);
+  if (!s.ok()) {
+    cli_->Close();
+    LOG(WARNING) << "failed to send redis command " << command << " to forward redis/pika";
+    cli_ = NULL;
+    ConnectRedis();
+  }
+
+  return 0;
+}
 
 PikaProxy::PikaProxy(
     int64_t filenum,
@@ -41,7 +127,9 @@ PikaProxy::PikaProxy(
   repl_state_(PIKA_REPL_NO_CONNECT),
   requirepass_(passwd),
   log_path_(log_path),
-  dump_path_(dump_path) {
+  dump_path_(dump_path),
+  cli_(NULL),
+  should_exit_(false) {
 
   pthread_rwlockattr_t attr;
   pthread_rwlockattr_init(&attr);
@@ -51,6 +139,12 @@ PikaProxy::PikaProxy(
   //Init ip host
   if (!Init()) {
     LOG(FATAL) << "Init iotcl error";
+  }
+
+  // connect forward redis/pika
+  ConnectRedis();
+  if (should_exit_) {
+    LOG(FATAL) << "Failed to connect forward redis/pika";
   }
 
   // Create thread
@@ -69,6 +163,9 @@ PikaProxy::~PikaProxy() {
   delete binlog_receiver_thread_;
 
   delete logger_;
+
+  delete cli_;
+
   pthread_rwlock_destroy(&state_protector_);
   pthread_rwlock_destroy(&rwlock_);
 
@@ -82,8 +179,8 @@ bool PikaProxy::Init() {
 
 void PikaProxy::Cleanup() {
   // shutdown server
-//  if (g_pika_conf->daemonize()) {
-//    unlink(g_pika_conf->pidfile().c_str());
+//  if (g_binlog_conf->daemonize()) {
+//    unlink(g_binlog_conf->pidfile().c_str());
 //  }
 
   delete this;
@@ -111,9 +208,10 @@ bool PikaProxy::SetMaster(std::string& master_ip, int master_port) {
   if ((role_ ^ PIKA_ROLE_SLAVE) && repl_state_ == PIKA_REPL_NO_CONNECT) {
     master_ip_ = master_ip;
     master_port_ = master_port;
-    role_ |= PIKA_ROLE_SLAVE;
+    // role_ |= PIKA_ROLE_SLAVE;
+    role_ = PIKA_ROLE_PROXY;
     repl_state_ = PIKA_REPL_CONNECT;
-    DLOG(INFO) << "set role_ = PIKA_ROLE_SLAVE, repl_state_ = PIKA_REPL_CONNECT";
+    DLOG(INFO) << "set role_ = PIKA_ROLE_PROXY, repl_state_ = PIKA_REPL_CONNECT";
     return true;
   }
   return false;
@@ -121,9 +219,9 @@ bool PikaProxy::SetMaster(std::string& master_ip, int master_port) {
 
 bool PikaProxy::ShouldConnectMaster() {
   slash::RWLock l(&state_protector_, false);
-  DLOG(INFO) << "repl_state: " << PikaState(repl_state_)
-             << " role: " << PikaRole(role_)
-			 << " master_connection: " << master_connection_;
+  // DLOG(INFO) << "repl_state: " << PikaState(repl_state_)
+  //            << " role: " << PikaRole(role_)
+  //   		 << " master_connection: " << master_connection_;
   if (repl_state_ == PIKA_REPL_CONNECT) {
     return true;
   }
@@ -153,7 +251,7 @@ void PikaProxy::MinusMasterConnection() {
   if (master_connection_ > 0) {
     if ((--master_connection_) <= 0) {
       // two connection with master has been deleted
-      if (role_ & PIKA_ROLE_SLAVE) {
+      if ((role_ & PIKA_ROLE_SLAVE) || (role_ & PIKA_ROLE_PROXY)) {
 		// not change by slaveof no one, so set repl_state = PIKA_REPL_CONNECT, continue to connect master
         repl_state_ = PIKA_REPL_CONNECT;
       } else {
@@ -224,24 +322,6 @@ void PikaProxy::NeedWaitDBSync() {
 void PikaProxy::WaitDBSyncFinish() {
   slash::RWLock l(&state_protector_, true);
   if (repl_state_ == PIKA_REPL_WAIT_DBSYNC) {
-    repl_state_ = PIKA_REPL_CONNECT;
-    // repl_state_ = PIKA_REPL_RETRANSMIT;
-  }
-}
-
-bool PikaProxy::IsWaitingRetransmitting() {
-  slash::RWLock l(&state_protector_, false);
-  // DLOG(INFO) << "repl_state: " << PikaState(repl_state_)
-  //     << " role: " << PikaRole(role_) << " master_connection: " << master_connection_;
-  if (repl_state_ == PIKA_REPL_RETRANSMIT) {
-    return true;
-  }
-  return false;
-}
-
-void PikaProxy::CompleteRetransmit() {
-  slash::RWLock l(&state_protector_, true);
-  if (repl_state_ == PIKA_REPL_RETRANSMIT) {
     repl_state_ = PIKA_REPL_CONNECT;
   }
 }

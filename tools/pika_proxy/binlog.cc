@@ -328,7 +328,7 @@ Status Binlog::AppendBlank(slash::WritableFile *file, uint64_t len) {
   if (len < kHeaderSize) {
     return Status::OK();
   }
-
+   
   uint64_t pos = 0;
 
   std::string blank(kBlockSize, ' ');

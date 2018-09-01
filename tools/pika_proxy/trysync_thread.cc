@@ -313,12 +313,6 @@ void* TrysyncThread::ThreadMain() {
       }
     }
 
-	// if (g_pika_proxy->IsWaitingRetransmitting()) {
-    //   LOG(INFO) << "Waiting retransmitting";
-	//   if () {
-	//   }
-	// }
-
     if (!g_pika_proxy->ShouldConnectMaster()) {
       continue;
     }

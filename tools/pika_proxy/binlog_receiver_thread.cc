@@ -17,20 +17,17 @@ extern PikaProxy* g_pika_proxy;
 BinlogReceiverThread::BinlogReceiverThread(int port, int cron_interval)
       : conn_factory_(this),
         handles_(this) {
-  pinfo("$$$$$$$$$$$$$$$$$$$$ hello0");
   thread_rep_ = pink::NewHolyThread(port, &conn_factory_,
                                     cron_interval, &handles_);
 }
 
 BinlogReceiverThread::~BinlogReceiverThread() {
-  pinfo("$$$$$$$$$$$$$$$$$$$$ hello1");
   thread_rep_->StopThread();
   DLOG(INFO) << "BinlogReceiver thread " << thread_rep_->thread_id() << " exit!!!";
 	delete thread_rep_;
 }
 
 int BinlogReceiverThread::StartThread() {
-  pinfo("$$$$$$$$$$$$$$$$$$$$ hello2");
   return thread_rep_->StartThread();
 }
 
@@ -38,7 +35,6 @@ bool BinlogReceiverThread::PikaBinlogReceiverHandles::AccessHandle(std::string& 
   if (ip == "127.0.0.1") {
     ip = g_pika_proxy->host();
   }
-  pinfo("$$$$$$$$$$$$$$$$$$$$ hello3");
   if (binlog_receiver_->thread_rep_->conn_num() != 0 ||
       !g_pika_proxy->ShouldAccessConnAsMaster(ip)) {
     DLOG(INFO) << "BinlogReceiverThread AccessHandle failed";
@@ -49,6 +45,5 @@ bool BinlogReceiverThread::PikaBinlogReceiverHandles::AccessHandle(std::string& 
 }
 
 void BinlogReceiverThread::KillBinlogSender() {
-  pinfo("$$$$$$$$$$$$$$$$$$$$ hello4");
   thread_rep_->KillAllConns();
 }

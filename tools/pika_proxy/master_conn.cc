@@ -18,27 +18,39 @@ MasterConn::MasterConn(int fd, std::string ip_port,
 
 void MasterConn::RestoreArgs() {
   raw_args_.clear();
-  RedisAppendLen(raw_args_, argv_.size(), "*");
+  size_t num = argv_.size() - 4;
+  RedisAppendLen(raw_args_, num, "*");
   PikaCmdArgsType::const_iterator it = argv_.begin();
-  for ( ; it != argv_.end(); ++it) {
+  for (size_t idx = 0; idx < num && it != argv_.end(); ++ it, ++ idx) {
     RedisAppendLen(raw_args_, (*it).size(), "$");
     RedisAppendContent(raw_args_, *it);
   }
 }
 
-int MasterConn::DealMessage() {
+// int MasterConn::DealMessage() {
+int MasterConn::DealMessage(pink::RedisCmdArgsType& argv, std::string* response) {
   //no reply
   //eq set_is_reply(false);
 
-  if (argv_.empty()) {
-    return -2;
+  // if (argv.empty()) {
+  if (argv.size() < 5) { // special chars: __PIKA_X#$SKGI\r\n1\r\n[\r\n
+    // return -2;
+	return 0;
   }
 
-  RestoreArgs();
+  // if (argv[0] == "auth") {
+  //	return 0;
+  // }
 
-  //g_pika_proxy->logger_->Lock();
-  g_pika_proxy->logger()->Put(raw_args_);
-  //g_pika_proxy->logger_->Unlock();
+  RestoreArgs();
+  // //g_pika_proxy->logger_->Lock();
+  // g_pika_proxy->logger()->Put(raw_args_);
+  // //g_pika_proxy->logger_->Unlock();
+ 
+  int ret = g_pika_proxy->SendRedisCommand(raw_args_);
+  if (ret != 0) {
+    DLOG(WARNING) << "send redis command:" << raw_args_ << ", ret:%d" << ret;
+  }
 
   return 0;
 }

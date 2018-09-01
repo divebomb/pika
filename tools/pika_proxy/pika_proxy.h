@@ -84,6 +84,8 @@ public:
     mutex_.Unlock();
   }
 
+  int SendRedisCommand(std::string &cmd);
+
   bool SetMaster(std::string& master_ip, int master_port);
   bool ShouldConnectMaster();
   void ConnectMasterDone();
@@ -95,8 +97,6 @@ public:
   bool IsWaitingDBSync();
   void NeedWaitDBSync();
   void WaitDBSyncFinish();
-  bool IsWaitingRetransmitting();
-  void CompleteRetransmit();
 
   void Start();
   void Cleanup();
@@ -121,6 +121,10 @@ private:
   std::string dump_path_;
   pthread_rwlock_t rwlock_;
 
+  // redis client
+  pink::PinkCli *cli_;
+  bool should_exit_;
+
   // Master use
   int64_t sid_;
 
@@ -133,6 +137,7 @@ private:
 
   PikaProxy(PikaProxy &bs);
   void operator =(const PikaProxy &bs);
+  void ConnectRedis();
 };
 
 #endif

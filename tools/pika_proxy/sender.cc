@@ -293,6 +293,7 @@ void *Sender::ThreadMain() {
   }
 
   delete cli_;
+  cli_ = NULL;
   log_info("Sender thread complete");
   return NULL;
 }
