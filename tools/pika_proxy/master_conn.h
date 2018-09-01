@@ -21,7 +21,7 @@ public:
   // int DealMessage();
 private:
   BinlogReceiverThread* self_thread_;
-  void RestoreArgs();
+  void RestoreArgs(pink::RedisCmdArgsType&);
   std::string raw_args_;
 };
 
