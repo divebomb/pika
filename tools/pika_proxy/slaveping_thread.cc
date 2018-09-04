@@ -20,9 +20,9 @@ Status SlavepingThread::Send() {
     argv.push_back(std::to_string(sid_));
     pink::SerializeRedisCommand(argv, &wbuf_str);
     is_first_send_ = false;
+    DLOG(INFO) << wbuf_str;
   }
 
-  DLOG(INFO) << wbuf_str;
   return cli_->Send(&wbuf_str);
 }
 
@@ -31,7 +31,7 @@ Status SlavepingThread::RecvProc() {
   Status s = cli_->Recv(&argv);
   if (s.ok()) {
     slash::StringToLower(argv[0]);
-    DLOG(INFO) << "Reply from master after ping: " << argv[0];
+    // DLOG(INFO) << "Reply from master after ping: " << argv[0];
     if (argv[0] == "pong" || argv[0] == "ok") {
     } else {
       s = Status::Corruption("");

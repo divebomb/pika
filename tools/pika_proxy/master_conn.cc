@@ -6,6 +6,9 @@
 #include <glog/logging.h>
 #include "master_conn.h"
 #include "binlog_receiver_thread.h"
+#include "include/pika_command.h"
+#include "include/pika_slot.h"
+
 #include "pika_proxy.h"
 
 extern PikaProxy *g_pika_proxy;
@@ -18,7 +21,13 @@ MasterConn::MasterConn(int fd, std::string ip_port,
 
 void MasterConn::RestoreArgs(pink::RedisCmdArgsType& argv) {
   raw_args_.clear();
-  size_t num = argv.size() - 4;
+  size_t num = argv.size();
+  if (argv.size() > 4 && *(argv.end() - 4) == kPikaBinlogMagic) {
+    num = argv.size()- 4;
+  }
+  if (argv[1].find(SlotKeyPrefix) != std::string::npos) {
+	  return;
+  }
   RedisAppendLen(raw_args_, num, "*");
   PikaCmdArgsType::const_iterator it = argv.begin();
   for (size_t idx = 0; idx < num && it != argv.end(); ++ it, ++ idx) {
@@ -43,6 +52,10 @@ int MasterConn::DealMessage(pink::RedisCmdArgsType& argv, std::string* response)
   // }
 
   RestoreArgs(argv);
+  if (raw_args_.size() == 0) {
+    return 0;
+  }
+
   // //g_pika_proxy->logger_->Lock();
   // g_pika_proxy->logger()->Put(raw_args_);
   // //g_pika_proxy->logger_->Unlock();
