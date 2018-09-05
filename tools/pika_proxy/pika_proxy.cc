@@ -3,6 +3,8 @@
 // LICENSE file in the root directory of this source tree. An additional grant
 // of patent rights can be found in the PATENTS file in the same directory.
 
+#include <functional>
+
 #include <glog/logging.h>
 #include <assert.h>
 #include <sys/ioctl.h>
@@ -16,33 +18,17 @@
 #include "slash/include/rsync.h"
 #include "pika_proxy.h"
 #include "binlog_const.h"
-#include "binlog_conf.h"
+#include "proxy_conf.h"
 
-PikaProxy::PikaProxy(
-    int64_t filenum,
-    int64_t offset,
-    std::string& local_ip,
-    int port,
-    std::string& master_ip,
-    int master_port,
-    std::string& passwd,
-    std::string& log_path,
-    std::string& dump_path
-  ) :
-  sid_(0),
-  filenum_(filenum),
-  offset_(offset) ,
+PikaProxy::PikaProxy(std::string& master_ip, int master_port, std::string& passwd)
+  : sid_(0),
   ping_thread_(NULL), 
-  host_(local_ip),
-  port_(port),
   master_ip_(master_ip),
   master_port_(master_port),
   master_connection_(0),
   role_(PIKA_ROLE_PROXY),
   repl_state_(PIKA_REPL_NO_CONNECT),
   requirepass_(passwd),
-  log_path_(log_path),
-  dump_path_(dump_path),
   // cli_(NULL),
   should_exit_(false) {
 
@@ -57,14 +43,18 @@ PikaProxy::PikaProxy(
   }
 
   // Create redis sender 
-  sender_ = new RedisSender(0, g_binlog_conf.forward_ip, g_binlog_conf.forward_port, g_binlog_conf.forward_passwd);
+  size_t thread_num = g_proxy_conf.forward_thread_num;
+  for (size_t i = 0; i < thread_num; i++) { 
+    senders_.emplace_back(new RedisSender(int(i), g_proxy_conf.forward_ip,
+	       g_proxy_conf.forward_port, g_proxy_conf.forward_passwd));
+  }
 
   // Create thread
-  binlog_receiver_thread_ = new BinlogReceiverThread(port_ + 1000, 1000);
+  binlog_receiver_thread_ = new BinlogReceiverThread(g_proxy_conf.local_port + 1000, 1000);
   trysync_thread_ = new TrysyncThread();
   
   pthread_rwlock_init(&state_protector_, NULL);
-  logger_ = new Binlog(log_path, 104857600);
+  logger_ = new Binlog(g_proxy_conf.log_path, 104857600);
 }
 
 PikaProxy::~PikaProxy() {
@@ -76,8 +66,6 @@ PikaProxy::~PikaProxy() {
 
   delete logger_;
 
-  // delete cli_;
-  delete sender_;
 
   pthread_rwlock_destroy(&state_protector_);
   pthread_rwlock_destroy(&rwlock_);
@@ -86,30 +74,53 @@ PikaProxy::~PikaProxy() {
 }
 
 bool PikaProxy::Init() {
-  // DLOG(INFO) << "host: " << host_ << " port: " << port_;
+  // DLOG(INFO) << "host: " << g_proxy_conf.local_ip << " port: " << g_proxy_conf.local_port;
   return true;
 }
 
 void PikaProxy::Cleanup() {
   // shutdown server
-//  if (g_binlog_conf->daemonize()) {
-//    unlink(g_binlog_conf->pidfile().c_str());
+//  if (g_proxy_conf->daemonize()) {
+//    unlink(g_proxy_conf->pidfile().c_str());
 //  }
 
-  sender_->Stop();
-  sender_->JoinThread();
+  // sender_->Stop();
+  // sender_->JoinThread();
+  // delete cli_;
+  // delete sender_;
+  size_t thread_num = g_proxy_conf.forward_thread_num;
+  for(size_t i = 0; i < thread_num; i++) {
+    senders_[i]->Stop();
+  }
+  for (size_t i = 0; i < thread_num; i++) {
+    senders_[i]->JoinThread();
+  }
+  int64_t replies = 0;
+  for (size_t i = 0; i < thread_num; i++) {
+    replies += senders_[i]->elements();
+    delete senders_[i];
+  }
+  DLOG(INFO) << "=============== Syncing =====================" << std::endl;
+  DLOG(INFO) << "Total replies : " << replies << " received from redis server";
 
-  delete this;
+  delete this; // PikaProxy is a global object
   ::google::ShutdownGoogleLogging();
 }
 
 void PikaProxy::Start() {
-  sender_->StartThread();
+  // start redis sender threads
+  size_t thread_num = g_proxy_conf.forward_thread_num;
+  for (size_t i = 0; i < thread_num; i++) {
+    senders_[i]->StartThread();
+  }
+
+  // sender_->StartThread();
   trysync_thread_->StartThread();
   binlog_receiver_thread_->StartThread();
 
-  if (filenum_ >= 0 && filenum_ != UINT32_MAX && offset_ >= 0) {
-    logger_->SetProducerStatus(filenum_, offset_);
+  // if (g_proxy_conf.filenum >= 0 && g_proxy_conf.filenum != UINT32_MAX && g_proxy_conf.offset >= 0) {
+  if (g_proxy_conf.filenum != UINT32_MAX) {
+    logger_->SetProducerStatus(g_proxy_conf.filenum, g_proxy_conf.offset);
   }
   SetMaster(master_ip_, master_port_);
 
@@ -120,9 +131,14 @@ void PikaProxy::Start() {
   Cleanup();
 }
 
-int PikaProxy::SendRedisCommand(std::string &command) {
+void PikaProxy::Stop() {
+  mutex_.Unlock();
+}
+
+int PikaProxy::SendRedisCommand(std::string &command, std::string &key) {
   // Send command
-  sender_->SendRedisCommand(command);
+  size_t idx = std::hash<std::string>()(key) % g_proxy_conf.forward_thread_num;
+  senders_[idx]->SendRedisCommand(command);
   
   return 0;
 }

@@ -18,7 +18,7 @@
 
 #include "trysync_thread.h"
 #include "pika_proxy.h"
-#include "binlog_conf.h"
+#include "proxy_conf.h"
 #include "binlog_const.h"
 
 extern PikaProxy* g_pika_proxy;
@@ -30,7 +30,7 @@ TrysyncThread::~TrysyncThread() {
 }
 
 void TrysyncThread::PrepareRsync() {
-  std::string db_sync_path = g_binlog_conf.dump_path;
+  std::string db_sync_path = g_proxy_conf.dump_path;
   slash::StopRsync(db_sync_path);
   slash::CreatePath(db_sync_path);
   slash::CreatePath(db_sync_path + "kv");
@@ -55,8 +55,8 @@ bool TrysyncThread::Send() {
   argv.push_back("trysync");
   // argv.push_back(g_pika_proxy->host());
   // argv.push_back(std::to_string(g_pika_proxy->port()));
-  argv.push_back(g_binlog_conf.local_ip);
-  argv.push_back(std::to_string(g_binlog_conf.local_port));
+  argv.push_back(g_proxy_conf.local_ip);
+  argv.push_back(std::to_string(g_proxy_conf.local_port));
   uint32_t filenum;
   uint64_t pro_offset;
   g_pika_proxy->logger()->GetProducerStatus(&filenum, &pro_offset);
@@ -68,8 +68,8 @@ bool TrysyncThread::Send() {
   pink::SerializeRedisCommand(argv, &tbuf_str);
 
   wbuf_str.append(tbuf_str);
-  DLOG(INFO) << "redis command: trysync " << g_binlog_conf.local_ip << " "
-             << g_binlog_conf.local_port << " " << filenum << " " << pro_offset;
+  DLOG(INFO) << "redis command: trysync " << g_proxy_conf.local_ip << " "
+             << g_proxy_conf.local_port << " " << filenum << " " << pro_offset;
 
   slash::Status s;
   s = cli_->Send(&wbuf_str);
@@ -145,7 +145,7 @@ bool TrysyncThread::RecvProc() {
 // 3, Update master offset, and the PikaTrysyncThread cron will connect and do slaveof task with master
 bool TrysyncThread::TryUpdateMasterOffset() {
   // Check dbsync finished
-  std::string db_sync_path = g_binlog_conf.dump_path;
+  std::string db_sync_path = g_proxy_conf.dump_path;
   std::string info_path = db_sync_path + kBgsaveInfoFile;
   if (!slash::FileExists(info_path)) {
     return false;
@@ -186,8 +186,8 @@ bool TrysyncThread::TryUpdateMasterOffset() {
     << ", offset: " << offset;
 
   // Sanity check
-  if (master_ip != g_binlog_conf.master_ip ||
-      master_port != g_binlog_conf.master_port) {
+  if (master_ip != g_proxy_conf.master_ip ||
+      master_port != g_proxy_conf.master_port) {
     LOG(WARNING) << "Error master ip port: " << master_ip << ":" << master_port;
     return false;
   }
@@ -218,11 +218,11 @@ using std::chrono::high_resolution_clock;
 using std::chrono::milliseconds;
 
 int TrysyncThread::Retransmit() {
-  std::string db_path = g_binlog_conf.dump_path;
-  std::string ip = g_binlog_conf.forward_ip;
-  int port = g_binlog_conf.forward_port;
-  size_t thread_num = g_binlog_conf.forward_thread_num;
-  std::string password = g_binlog_conf.forward_passwd;
+  std::string db_path = g_proxy_conf.dump_path;
+  std::string ip = g_proxy_conf.forward_ip;
+  int port = g_proxy_conf.forward_port;
+  size_t thread_num = g_proxy_conf.forward_thread_num;
+  std::string password = g_proxy_conf.forward_passwd;
   
   std::vector<PikaSender*> senders;
   std::vector<std::unique_ptr<MigratorThread>> migrators;
@@ -319,22 +319,22 @@ void* TrysyncThread::ThreadMain() {
     sleep(2);
     DLOG(INFO) << "Should connect master";
     
-    std::string master_ip = g_binlog_conf.master_ip;
-    int master_port = g_binlog_conf.master_port;
-    std::string dbsync_path = g_binlog_conf.dump_path;
+    std::string master_ip = g_proxy_conf.master_ip;
+    int master_port = g_proxy_conf.master_port;
+    std::string dbsync_path = g_proxy_conf.dump_path;
 
     // Start rsync service
     PrepareRsync();
-    std::string ip_port = slash::IpPortString(g_binlog_conf.master_ip, g_binlog_conf.master_port);
+    std::string ip_port = slash::IpPortString(g_proxy_conf.master_ip, g_proxy_conf.master_port);
     int ret = slash::StartRsync(dbsync_path, kDBSyncModule + "_" + ip_port,
-	                g_binlog_conf.local_ip, g_binlog_conf.local_port + 3000);
+	                g_proxy_conf.local_ip, g_proxy_conf.local_port + 3000);
     if (0 != ret) {
       LOG(WARNING) << "Failed to start rsync, path:" << dbsync_path << " error : " << ret;
       return false;
     }
     LOG(INFO) << "Finish to start rsync, path:" << dbsync_path;
 
-    if ((cli_->Connect(master_ip, master_port, g_binlog_conf.local_ip)).ok()) {
+    if ((cli_->Connect(master_ip, master_port, g_proxy_conf.local_ip)).ok()) {
       LOG(INFO) << "Connect to master{ip:" << master_ip << ", port: " << master_port << "}";
       cli_->set_send_timeout(5000);
       cli_->set_recv_timeout(5000);

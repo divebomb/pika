@@ -36,7 +36,6 @@ void MasterConn::RestoreArgs(pink::RedisCmdArgsType& argv) {
   }
 }
 
-// int MasterConn::DealMessage() {
 int MasterConn::DealMessage(pink::RedisCmdArgsType& argv, std::string* response) {
   //no reply
   //eq set_is_reply(false);
@@ -60,7 +59,11 @@ int MasterConn::DealMessage(pink::RedisCmdArgsType& argv, std::string* response)
   // g_pika_proxy->logger()->Put(raw_args_);
   // //g_pika_proxy->logger_->Unlock();
 
-  int ret = g_pika_proxy->SendRedisCommand(raw_args_);
+  std::string key(" ");
+  if (1 < argv.size()) {
+    key = argv[1];
+  }
+  int ret = g_pika_proxy->SendRedisCommand(raw_args_, key);
   if (ret != 0) {
     DLOG(WARNING) << "send redis command:" << raw_args_ << ", ret:%d" << ret;
   }

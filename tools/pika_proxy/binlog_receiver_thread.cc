@@ -10,13 +10,13 @@
 #include "master_conn.h"
 #include "pika_proxy.h"
 
-#include "binlog_log.h"
+#include "proxy_conf.h"
 
 extern PikaProxy* g_pika_proxy;
 
 BinlogReceiverThread::BinlogReceiverThread(int port, int cron_interval)
-      : conn_factory_(this),
-        handles_(this) {
+      : conn_factory_(this), handles_(this) {
+
   thread_rep_ = pink::NewHolyThread(port, &conn_factory_,
                                     cron_interval, &handles_);
 }
@@ -33,7 +33,7 @@ int BinlogReceiverThread::StartThread() {
 
 bool BinlogReceiverThread::PikaBinlogReceiverHandles::AccessHandle(std::string& ip) const {
   if (ip == "127.0.0.1") {
-    ip = g_pika_proxy->host();
+    ip = g_proxy_conf.local_ip;
   }
   if (binlog_receiver_->thread_rep_->conn_num() != 0 ||
       !g_pika_proxy->ShouldAccessConnAsMaster(ip)) {

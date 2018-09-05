@@ -11,9 +11,9 @@
 #include <fcntl.h>
 
 #include "pika_proxy.h"
-#include "binlog_conf.h"
+#include "proxy_conf.h"
 
-BinlogConf g_binlog_conf;
+ProxyConf g_proxy_conf;
 
 PikaProxy* g_pika_proxy;
 
@@ -47,9 +47,11 @@ static void close_std() {
   }
 }
 
+#include <unistd.h>
+
 static void IntSigHandle(const int sig) {
   DLOG(INFO) << "Catch Signal " << sig << ", cleanup...";
-  g_pika_proxy->UnLock();
+  g_pika_proxy->Stop();
 }
 
 static void SignalSetup() {
@@ -100,68 +102,68 @@ int main(int argc, char *argv[]) {
     switch (c) {
       case 't':
         snprintf(buf, 1024, "%s", optarg);
-        g_binlog_conf.local_ip = std::string(buf);
+        g_proxy_conf.local_ip = std::string(buf);
         break;
       case 'p':
         snprintf(buf, 1024, "%s", optarg);
         slash::string2l(buf, strlen(buf), &(num));
-        g_binlog_conf.local_port = int(num);
+        g_proxy_conf.local_port = int(num);
         break;
       case 'i':
         snprintf(buf, 1024, "%s", optarg);
-        g_binlog_conf.master_ip = std::string(buf);
+        g_proxy_conf.master_ip = std::string(buf);
         break;
       case 'o':
         snprintf(buf, 1024, "%s", optarg);
         slash::string2l(buf, strlen(buf), &(num));
-        g_binlog_conf.master_port = int(num);
+        g_proxy_conf.master_port = int(num);
         break;
       case 'm':
         snprintf(buf, 1024, "%s", optarg);
-        g_binlog_conf.forward_ip = std::string(buf);
+        g_proxy_conf.forward_ip = std::string(buf);
         break;
       case 'n':
         snprintf(buf, 1024, "%s", optarg);
         slash::string2l(buf, strlen(buf), &(num));
-        g_binlog_conf.forward_port = int(num);
+        g_proxy_conf.forward_port = int(num);
         break;
       case 'x':
         snprintf(buf, 1024, "%s", optarg);
         slash::string2l(buf, strlen(buf), &(num));
-        g_binlog_conf.forward_thread_num = int(num);
+        g_proxy_conf.forward_thread_num = int(num);
         break;
       case 'y':
         snprintf(buf, 1024, "%s", optarg);
-        g_binlog_conf.forward_passwd = std::string(buf);
+        g_proxy_conf.forward_passwd = std::string(buf);
         break;
 
       case 'f':
         snprintf(buf, 1024, "%s", optarg);
         slash::string2l(buf, strlen(buf), &(num));
-        g_binlog_conf.filenum = (size_t)(num);
+        g_proxy_conf.filenum = (size_t)(num);
         break;
       case 's':
         snprintf(buf, 1024, "%s", optarg);
         slash::string2l(buf, strlen(buf), &(num));
-        g_binlog_conf.offset = (size_t)(num);
+        g_proxy_conf.offset = (size_t)(num);
         break;
       case 'w':
         snprintf(buf, 1024, "%s", optarg);
-        g_binlog_conf.passwd = std::string(buf);
+        g_proxy_conf.passwd = std::string(buf);
         break;
 
       case 'r':
         snprintf(buf, 1024, "%s", optarg);
-        g_binlog_conf.dump_path = std::string(buf);
-        if (g_binlog_conf.dump_path[g_binlog_conf.dump_path.length() - 1] != '/' ) {
-          g_binlog_conf.dump_path.append("/");
+        g_proxy_conf.dump_path = std::string(buf);
+        if (g_proxy_conf.dump_path[g_proxy_conf.dump_path.length() - 1] != '/' ) {
+          g_proxy_conf.dump_path.append("/");
         }
         break;
       case 'l':
         snprintf(buf, 1024, "%s", optarg);
-        g_binlog_conf.log_path = std::string(buf);
-        if (g_binlog_conf.log_path[g_binlog_conf.log_path.length() - 1] != '/' ) {
-          g_binlog_conf.log_path.append("/");
+        g_proxy_conf.log_path = std::string(buf);
+        if (g_proxy_conf.log_path[g_proxy_conf.log_path.length() - 1] != '/' ) {
+          g_proxy_conf.log_path.append("/");
         }
         break;
       case 'd':
@@ -176,28 +178,28 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  if (g_binlog_conf.local_port == 0) {
+  if (g_proxy_conf.local_port == 0) {
     std::random_device rd;
     std::mt19937 mt(rd());
     std::uniform_int_distribution<int> di(10000, 40000);
-    g_binlog_conf.local_port = di(mt);
-    LOG(INFO) << "Use random port: " << g_binlog_conf.local_port;
+    g_proxy_conf.local_port = di(mt);
+    LOG(INFO) << "Use random port: " << g_proxy_conf.local_port;
   }
 
-  std::cout << "local_ip:" << g_binlog_conf.local_ip << " "
-            << "local_port:" << g_binlog_conf.local_port << " "
-            << "master_ip:"  << g_binlog_conf.master_ip << " "
-            << "master_port:"  << g_binlog_conf.master_port << " "
-            << "forward_ip:"  << g_binlog_conf.forward_ip << " "
-            << "forward_port:"  << g_binlog_conf.forward_port << " "
-            << "forward_passwd:"  << g_binlog_conf.forward_passwd << " "
-            << "forward_thread_num:" << g_binlog_conf.forward_thread_num << " "
-            << "log_path:"   << g_binlog_conf.log_path << " "
-            << "dump_path:"  << g_binlog_conf.dump_path << " "
-            << "filenum:"    << g_binlog_conf.filenum << " "
-            << "offset:"     << g_binlog_conf.offset << " "
-            << "passwd:"     << g_binlog_conf.passwd << std::endl;
-  if (g_binlog_conf.master_port == 0 || g_binlog_conf.forward_port == 0) {
+  std::cout << "local_ip:" << g_proxy_conf.local_ip << " "
+            << "local_port:" << g_proxy_conf.local_port << " "
+            << "master_ip:"  << g_proxy_conf.master_ip << " "
+            << "master_port:"  << g_proxy_conf.master_port << " "
+            << "forward_ip:"  << g_proxy_conf.forward_ip << " "
+            << "forward_port:"  << g_proxy_conf.forward_port << " "
+            << "forward_passwd:"  << g_proxy_conf.forward_passwd << " "
+            << "forward_thread_num:" << g_proxy_conf.forward_thread_num << " "
+            << "log_path:"   << g_proxy_conf.log_path << " "
+            << "dump_path:"  << g_proxy_conf.dump_path << " "
+            << "filenum:"    << g_proxy_conf.filenum << " "
+            << "offset:"     << g_proxy_conf.offset << " "
+            << "passwd:"     << g_proxy_conf.passwd << std::endl;
+  if (g_proxy_conf.master_port == 0 || g_proxy_conf.forward_port == 0) {
     fprintf (stderr, "Invalid Arguments\n" );
     Usage();
     exit(-1);
@@ -208,20 +210,10 @@ int main(int argc, char *argv[]) {
     daemonize();
   }
 
-  GlogInit(g_binlog_conf.log_path, is_daemon);
+  GlogInit(g_proxy_conf.log_path, is_daemon);
   SignalSetup();
 
-  g_pika_proxy = new PikaProxy(
-    g_binlog_conf.filenum,
-    g_binlog_conf.offset,
-    g_binlog_conf.local_ip,
-    g_binlog_conf.local_port,
-    g_binlog_conf.master_ip,
-    g_binlog_conf.master_port,
-    g_binlog_conf.passwd,
-    g_binlog_conf.log_path,
-    g_binlog_conf.dump_path
-  );
+  g_pika_proxy = new PikaProxy(g_proxy_conf.master_ip, g_proxy_conf.master_port, g_proxy_conf.passwd);
   if (is_daemon) {
     close_std();
   }

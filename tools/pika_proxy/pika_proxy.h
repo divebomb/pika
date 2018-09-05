@@ -15,34 +15,20 @@
 #include "trysync_thread.h"
 #include "redis_sender.h"
 
+#include <vector>
+
 using slash::Status;
 using slash::Slice;
 
 class PikaProxy
 {
 public:
-  PikaProxy(
-    int64_t filenum,
-    int64_t offset,
-    std::string& local_ip,
-    int port,
-    std::string& master_ip,
-    int master_port,
-    std::string& passwd,
-    std::string& log_path,
-    std::string& dump_path
-  );
+  PikaProxy(std::string& master_ip, int master_port, std::string& passwd);
   ~PikaProxy();
 
   /*
    * Get & Set 
    */
-  std::string host() {
-    return host_;
-  }
-  int port() {
-    return port_;
-  };
   std::string& master_ip() {
     return master_ip_;
   }
@@ -81,11 +67,8 @@ public:
   Binlog* logger() {
     return logger_;
   }
-  void UnLock() {
-    mutex_.Unlock();
-  }
 
-  int SendRedisCommand(std::string &cmd);
+  int SendRedisCommand(std::string &command, std::string &key);
 
   bool SetMaster(std::string& master_ip, int master_port);
   bool ShouldConnectMaster();
@@ -100,18 +83,13 @@ public:
   void WaitDBSyncFinish();
 
   void Start();
+  void Stop();
   void Cleanup();
 
-  slash::Mutex mutex_; // double lock to block main thread
-
   bool Init();
-  int64_t filenum_;
-  int64_t offset_;
   SlavepingThread* ping_thread_;
 
 private:
-  std::string host_;
-  int port_;
   std::string master_ip_;
   int master_port_;
   int master_connection_;
@@ -122,9 +100,12 @@ private:
   std::string dump_path_;
   pthread_rwlock_t rwlock_;
 
+  slash::Mutex mutex_; // double lock to block main thread
+
   // redis client
   // pink::PinkCli *cli_;
-  RedisSender *sender_;
+  // RedisSender *sender_;
+  std::vector<RedisSender*> senders_;
 
   bool should_exit_;
 
