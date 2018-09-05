@@ -13,6 +13,7 @@
 #include "binlog_receiver_thread.h"
 #include "slaveping_thread.h"
 #include "trysync_thread.h"
+#include "redis_sender.h"
 
 using slash::Status;
 using slash::Slice;
@@ -122,7 +123,9 @@ private:
   pthread_rwlock_t rwlock_;
 
   // redis client
-  pink::PinkCli *cli_;
+  // pink::PinkCli *cli_;
+  RedisSender *sender_;
+
   bool should_exit_;
 
   // Master use

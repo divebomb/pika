@@ -18,91 +18,6 @@
 #include "binlog_const.h"
 #include "binlog_conf.h"
 
-void PikaProxy::ConnectRedis() {
-  while (cli_ == NULL) {
-    // Connect to redis
-    cli_ = pink::NewRedisCli();
-    cli_->set_connect_timeout(1000);
-    slash::Status s = cli_->Connect(g_binlog_conf.forward_ip, g_binlog_conf.forward_port);
-    if (!s.ok()) {
-      cli_ = NULL;
-      LOG(INFO) << "Can not connect to " << g_binlog_conf.forward_ip.data() << ":"
-	            << g_binlog_conf.forward_port << ", status:" << s.ToString();
-      continue;
-    } else {
-      // Connect success
-      LOG(INFO) << "Connect to " << g_binlog_conf.forward_ip.data() << ":"
-	            << g_binlog_conf.forward_port << ", status:" << s.ToString();
-      // Authentication
-      if (!g_binlog_conf.forward_passwd.empty()) {
-        pink::RedisCmdArgsType argv, resp;
-        std::string cmd;
-
-        argv.push_back("AUTH");
-        argv.push_back(g_binlog_conf.forward_passwd);
-        pink::SerializeRedisCommand(argv, &cmd);
-        slash::Status s = cli_->Send(&cmd);
-
-        if (s.ok()) {
-          s = cli_->Recv(&resp);
-          if (resp[0] == "OK") {
-            LOG(INFO) << "Authentic success";
-          } else {
-            cli_->Close();
-            LOG(WARNING) << "Invalid password";
-            cli_ = NULL;
-            should_exit_ = true;
-            return;
-          }
-        } else {
-         cli_->Close();
-          LOG(INFO) << s.ToString();
-          cli_ = NULL;
-          continue;
-        }
-      } else {
-        // If forget to input password
-        pink::RedisCmdArgsType argv, resp;
-        std::string cmd;
-
-        argv.push_back("PING");
-        pink::SerializeRedisCommand(argv, &cmd);
-        slash::Status s = cli_->Send(&cmd);
-
-        if (s.ok()) {
-          s = cli_->Recv(&resp);
-          if (s.ok()) {
-            if (resp[0] == "NOAUTH Authentication required.") {
-              cli_->Close();
-              LOG(WARNING) << "Authentication required";
-              cli_ = NULL;
-              should_exit_ = true;
-              return;
-            }
-          } else {
-            cli_->Close();
-            LOG(INFO) <<  s.ToString();
-            cli_ = NULL;
-          }
-        }
-      }
-    }
-  }
-}
-
-int PikaProxy::SendRedisCommand(std::string &command) {
-  // Send command
-  slash::Status s = cli_->Send(&command);
-  if (!s.ok()) {
-    cli_->Close();
-    LOG(WARNING) << "failed to send redis command " << command << " to forward redis/pika";
-    cli_ = NULL;
-    ConnectRedis();
-  }
-
-  return 0;
-}
-
 PikaProxy::PikaProxy(
     int64_t filenum,
     int64_t offset,
@@ -128,7 +43,7 @@ PikaProxy::PikaProxy(
   requirepass_(passwd),
   log_path_(log_path),
   dump_path_(dump_path),
-  cli_(NULL),
+  // cli_(NULL),
   should_exit_(false) {
 
   pthread_rwlockattr_t attr;
@@ -141,11 +56,8 @@ PikaProxy::PikaProxy(
     LOG(FATAL) << "Init iotcl error";
   }
 
-  // connect forward redis/pika
-  ConnectRedis();
-  if (should_exit_) {
-    LOG(FATAL) << "Failed to connect forward redis/pika";
-  }
+  // Create redis sender 
+  sender_ = new RedisSender(0, g_binlog_conf.forward_ip, g_binlog_conf.forward_port, g_binlog_conf.forward_passwd);
 
   // Create thread
   binlog_receiver_thread_ = new BinlogReceiverThread(port_ + 1000, 1000);
@@ -164,7 +76,8 @@ PikaProxy::~PikaProxy() {
 
   delete logger_;
 
-  delete cli_;
+  // delete cli_;
+  delete sender_;
 
   pthread_rwlock_destroy(&state_protector_);
   pthread_rwlock_destroy(&rwlock_);
@@ -183,11 +96,15 @@ void PikaProxy::Cleanup() {
 //    unlink(g_binlog_conf->pidfile().c_str());
 //  }
 
+  sender_->Stop();
+  sender_->JoinThread();
+
   delete this;
   ::google::ShutdownGoogleLogging();
 }
 
 void PikaProxy::Start() {
+  sender_->StartThread();
   trysync_thread_->StartThread();
   binlog_receiver_thread_->StartThread();
 
@@ -201,6 +118,13 @@ void PikaProxy::Start() {
   mutex_.Unlock();
   DLOG(INFO) << "Goodbye...";
   Cleanup();
+}
+
+int PikaProxy::SendRedisCommand(std::string &command) {
+  // Send command
+  sender_->SendRedisCommand(command);
+  
+  return 0;
 }
 
 bool PikaProxy::SetMaster(std::string& master_ip, int master_port) {

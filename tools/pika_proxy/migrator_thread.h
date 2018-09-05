@@ -4,11 +4,11 @@
 #include <iostream>
 #include "nemo.h"
 #include "pink/include/redis_cli.h"
-#include "sender.h"
+#include "pika_sender.h"
 
 class MigratorThread : public pink::Thread {
  public:
-  MigratorThread(nemo::Nemo *db, std::vector<Sender *> *senders, char type, int thread_num) :
+  MigratorThread(nemo::Nemo *db, std::vector<PikaSender *> *senders, char type, int thread_num) :
       db_(db),
       senders_(senders),
       type_(type),
@@ -27,7 +27,7 @@ class MigratorThread : public pink::Thread {
   bool should_exit_;
  private:
   nemo::Nemo *db_;
-  std::vector<Sender *> *senders_;
+  std::vector<PikaSender *> *senders_;
   char type_;
   int thread_num_;
   int thread_index_;

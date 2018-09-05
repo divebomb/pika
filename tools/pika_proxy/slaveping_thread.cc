@@ -68,7 +68,7 @@ void* SlavepingThread::ThreadMain() {
           s = RecvProc();
         }
         if (s.ok()) {
-          DLOG(INFO) << "Ping master success";
+          // DLOG(INFO) << "Ping master success";
           gettimeofday(&last_interaction, NULL);
         } else if (s.IsTimeout()) {
           DLOG(INFO) << "Slaveping timeout once";

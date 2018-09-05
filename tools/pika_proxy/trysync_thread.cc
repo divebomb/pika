@@ -211,7 +211,7 @@ bool TrysyncThread::TryUpdateMasterOffset() {
 #include <memory>
 
 #include "nemo.h"
-#include "sender.h"
+#include "pika_sender.h"
 #include "migrator_thread.h"
 
 using std::chrono::high_resolution_clock;
@@ -224,7 +224,7 @@ int TrysyncThread::Retransmit() {
   size_t thread_num = g_binlog_conf.forward_thread_num;
   std::string password = g_binlog_conf.forward_passwd;
   
-  std::vector<Sender*> senders;
+  std::vector<PikaSender*> senders;
   std::vector<std::unique_ptr<MigratorThread>> migrators;
   std::unique_ptr<nemo::Nemo> db;
 
@@ -249,7 +249,7 @@ int TrysyncThread::Retransmit() {
 
   // Init SenderThread
   for (size_t i = 0; i < thread_num; i++) {
-    senders.emplace_back(new Sender(db.get(), ip, port, password));
+    senders.emplace_back(new PikaSender(db.get(), ip, port, password));
   }
 
   migrators.emplace_back(new MigratorThread(db.get(), &senders, nemo::DataType::kKv, thread_num));
