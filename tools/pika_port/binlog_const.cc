@@ -47,8 +47,8 @@ std::string PikaRole(int role) {
     roleStr += " PIKA_ROLE_DOUBLE_MASTER |";
   }
 
-  if (role == PIKA_ROLE_PROXY) {
-    roleStr += " PIKA_ROLE_PROXY |";
+  if (role == PIKA_ROLE_PORT) {
+    roleStr += " PIKA_ROLE_PORT |";
   }
 
   return roleStr;

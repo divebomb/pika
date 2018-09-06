@@ -6,7 +6,7 @@
 // #define PIKA_ROLE_SLAVE 1
 // #define PIKA_ROLE_MASTER 2
 // #define PIKA_ROLE_DOUBLE_MASTER 3
-#define PIKA_ROLE_PROXY 4
+#define PIKA_ROLE_PORT 4
 
 #include <limits.h>
 #include <stdint.h>

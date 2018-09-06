@@ -9,9 +9,9 @@
 #include "include/pika_command.h"
 #include "include/pika_slot.h"
 
-#include "pika_proxy.h"
+#include "pika_port.h"
 
-extern PikaProxy *g_pika_proxy;
+extern PikaPort *g_pika_port;
 
 MasterConn::MasterConn(int fd, std::string ip_port,
                        BinlogReceiverThread* binlog_receiver)
@@ -55,15 +55,15 @@ int MasterConn::DealMessage(pink::RedisCmdArgsType& argv, std::string* response)
     return 0;
   }
 
-  // //g_pika_proxy->logger_->Lock();
-  // g_pika_proxy->logger()->Put(raw_args_);
-  // //g_pika_proxy->logger_->Unlock();
+  // //g_pika_port->logger_->Lock();
+  // g_pika_port->logger()->Put(raw_args_);
+  // //g_pika_port->logger_->Unlock();
 
   std::string key(" ");
   if (1 < argv.size()) {
     key = argv[1];
   }
-  int ret = g_pika_proxy->SendRedisCommand(raw_args_, key);
+  int ret = g_pika_port->SendRedisCommand(raw_args_, key);
   if (ret != 0) {
     DLOG(WARNING) << "send redis command:" << raw_args_ << ", ret:%d" << ret;
   }

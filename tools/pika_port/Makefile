@@ -10,7 +10,7 @@ else
 				-D__STDC_FORMAT_MACROS -std=c++11 -Wno-redundant-decls
 endif
 
-OBJECT = pika_proxy
+OBJECT = pika_port
 SRC_DIR = .
 THIRD_PATH = ../../third
 

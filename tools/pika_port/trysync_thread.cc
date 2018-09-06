@@ -17,11 +17,11 @@
 #include "include/pika_define.h"
 
 #include "trysync_thread.h"
-#include "pika_proxy.h"
-#include "proxy_conf.h"
+#include "pika_port.h"
+#include "port_conf.h"
 #include "binlog_const.h"
 
-extern PikaProxy* g_pika_proxy;
+extern PikaPort* g_pika_port;
 
 TrysyncThread::~TrysyncThread() {
   StopThread();
@@ -30,7 +30,7 @@ TrysyncThread::~TrysyncThread() {
 }
 
 void TrysyncThread::PrepareRsync() {
-  std::string db_sync_path = g_proxy_conf.dump_path;
+  std::string db_sync_path = g_port_conf.dump_path;
   slash::StopRsync(db_sync_path);
   slash::CreatePath(db_sync_path);
   slash::CreatePath(db_sync_path + "kv");
@@ -43,7 +43,7 @@ void TrysyncThread::PrepareRsync() {
 bool TrysyncThread::Send() {
   pink::RedisCmdArgsType argv;
   std::string wbuf_str;
-  std::string requirepass = g_pika_proxy->requirepass();
+  std::string requirepass = g_pika_port->requirepass();
   if (requirepass != "") {
     argv.push_back("auth");
     argv.push_back(requirepass);
@@ -53,13 +53,13 @@ bool TrysyncThread::Send() {
   argv.clear();
   std::string tbuf_str;
   argv.push_back("trysync");
-  // argv.push_back(g_pika_proxy->host());
-  // argv.push_back(std::to_string(g_pika_proxy->port()));
-  argv.push_back(g_proxy_conf.local_ip);
-  argv.push_back(std::to_string(g_proxy_conf.local_port));
+  // argv.push_back(g_pika_port->host());
+  // argv.push_back(std::to_string(g_pika_port->port()));
+  argv.push_back(g_port_conf.local_ip);
+  argv.push_back(std::to_string(g_port_conf.local_port));
   uint32_t filenum;
   uint64_t pro_offset;
-  g_pika_proxy->logger()->GetProducerStatus(&filenum, &pro_offset);
+  g_pika_port->logger()->GetProducerStatus(&filenum, &pro_offset);
   LOG(WARNING) << "producer filenum: " << filenum << ", producer offset:" << pro_offset;
   
   argv.push_back(std::to_string(filenum));
@@ -68,8 +68,8 @@ bool TrysyncThread::Send() {
   pink::SerializeRedisCommand(argv, &tbuf_str);
 
   wbuf_str.append(tbuf_str);
-  DLOG(INFO) << "redis command: trysync " << g_proxy_conf.local_ip << " "
-             << g_proxy_conf.local_port << " " << filenum << " " << pro_offset;
+  DLOG(INFO) << "redis command: trysync " << g_port_conf.local_ip << " "
+             << g_port_conf.local_port << " " << filenum << " " << pro_offset;
 
   slash::Status s;
   s = cli_->Send(&wbuf_str);
@@ -84,7 +84,7 @@ bool TrysyncThread::Send() {
 // if send command {trysync slaveip slaveport 11 38709514}, the reply = "sid:.
 // it means that slave sid is allocated by master.
 bool TrysyncThread::RecvProc() {
-  bool should_auth = g_pika_proxy->requirepass() == "" ? false : true;
+  bool should_auth = g_pika_port->requirepass() == "" ? false : true;
   bool is_authed = false;
   slash::Status s;
   std::string reply;
@@ -101,7 +101,7 @@ bool TrysyncThread::RecvProc() {
     DLOG(INFO) << "Reply from master after trysync: " << reply;
     if (!is_authed && should_auth) {
       if (kInnerReplOk != slash::StringToLower(reply)) {
-        g_pika_proxy->RemoveMaster();
+        g_pika_port->RemoveMaster();
         return false;
       }
       is_authed = true;
@@ -111,7 +111,7 @@ bool TrysyncThread::RecvProc() {
           slash::string2l(reply.data(), reply.size(), &sid_)) {
         // Luckly, I got your point, the sync is comming
         DLOG(INFO) << "Recv sid from master: " << sid_;
-        g_pika_proxy->SetSid(sid_);
+        g_pika_port->SetSid(sid_);
         break;
       }
 
@@ -123,12 +123,12 @@ bool TrysyncThread::RecvProc() {
         // 2, Master waiting for an existing bgsaving process
         // 3, Master do dbsyncing
         LOG(INFO) << "Need wait to sync";
-        g_pika_proxy->NeedWaitDBSync();
+        g_pika_port->NeedWaitDBSync();
         // break;
       } else {
         LOG(INFO) << "Sync Error, Quit";
         kill(getpid(), SIGQUIT);
-        g_pika_proxy->RemoveMaster();
+        g_pika_port->RemoveMaster();
       }
       return false;
     }
@@ -145,7 +145,7 @@ bool TrysyncThread::RecvProc() {
 // 3, Update master offset, and the PikaTrysyncThread cron will connect and do slaveof task with master
 bool TrysyncThread::TryUpdateMasterOffset() {
   // Check dbsync finished
-  std::string db_sync_path = g_proxy_conf.dump_path;
+  std::string db_sync_path = g_port_conf.dump_path;
   std::string info_path = db_sync_path + kBgsaveInfoFile;
   if (!slash::FileExists(info_path)) {
     return false;
@@ -186,8 +186,8 @@ bool TrysyncThread::TryUpdateMasterOffset() {
     << ", offset: " << offset;
 
   // Sanity check
-  if (master_ip != g_proxy_conf.master_ip ||
-      master_port != g_proxy_conf.master_port) {
+  if (master_ip != g_port_conf.master_ip ||
+      master_port != g_port_conf.master_port) {
     LOG(WARNING) << "Error master ip port: " << master_ip << ":" << master_port;
     return false;
   }
@@ -197,9 +197,9 @@ bool TrysyncThread::TryUpdateMasterOffset() {
   slash::DeleteFile(info_path);
 
   // Update master offset
-  g_pika_proxy->logger()->SetProducerStatus(filenum, offset);
+  g_pika_port->logger()->SetProducerStatus(filenum, offset);
   Retransmit();
-  g_pika_proxy->WaitDBSyncFinish();
+  g_pika_port->WaitDBSyncFinish();
   // g_pika_server->SetForceFullSync(false);
 
   return true;
@@ -218,11 +218,11 @@ using std::chrono::high_resolution_clock;
 using std::chrono::milliseconds;
 
 int TrysyncThread::Retransmit() {
-  std::string db_path = g_proxy_conf.dump_path;
-  std::string ip = g_proxy_conf.forward_ip;
-  int port = g_proxy_conf.forward_port;
-  size_t thread_num = g_proxy_conf.forward_thread_num;
-  std::string password = g_proxy_conf.forward_passwd;
+  std::string db_path = g_port_conf.dump_path;
+  std::string ip = g_port_conf.forward_ip;
+  int port = g_port_conf.forward_port;
+  size_t thread_num = g_port_conf.forward_thread_num;
+  std::string password = g_port_conf.forward_passwd;
   
   std::vector<PikaSender*> senders;
   std::vector<std::unique_ptr<MigratorThread>> migrators;
@@ -305,7 +305,7 @@ void* TrysyncThread::ThreadMain() {
   while (!should_stop()) {
     sleep(1);
 
-    if (g_pika_proxy->IsWaitingDBSync()) {
+    if (g_pika_port->IsWaitingDBSync()) {
       LOG(INFO) << "Waiting db sync";
       //Try to update offset by db sync
       if (TryUpdateMasterOffset()) {
@@ -313,39 +313,39 @@ void* TrysyncThread::ThreadMain() {
       }
     }
 
-    if (!g_pika_proxy->ShouldConnectMaster()) {
+    if (!g_pika_port->ShouldConnectMaster()) {
       continue;
     }
     sleep(2);
     DLOG(INFO) << "Should connect master";
     
-    std::string master_ip = g_proxy_conf.master_ip;
-    int master_port = g_proxy_conf.master_port;
-    std::string dbsync_path = g_proxy_conf.dump_path;
+    std::string master_ip = g_port_conf.master_ip;
+    int master_port = g_port_conf.master_port;
+    std::string dbsync_path = g_port_conf.dump_path;
 
     // Start rsync service
     PrepareRsync();
-    std::string ip_port = slash::IpPortString(g_proxy_conf.master_ip, g_proxy_conf.master_port);
+    std::string ip_port = slash::IpPortString(g_port_conf.master_ip, g_port_conf.master_port);
     int ret = slash::StartRsync(dbsync_path, kDBSyncModule + "_" + ip_port,
-	                g_proxy_conf.local_ip, g_proxy_conf.local_port + 3000);
+	                g_port_conf.local_ip, g_port_conf.local_port + 3000);
     if (0 != ret) {
       LOG(WARNING) << "Failed to start rsync, path:" << dbsync_path << " error : " << ret;
       return false;
     }
     LOG(INFO) << "Finish to start rsync, path:" << dbsync_path;
 
-    if ((cli_->Connect(master_ip, master_port, g_proxy_conf.local_ip)).ok()) {
+    if ((cli_->Connect(master_ip, master_port, g_port_conf.local_ip)).ok()) {
       LOG(INFO) << "Connect to master{ip:" << master_ip << ", port: " << master_port << "}";
       cli_->set_send_timeout(5000);
       cli_->set_recv_timeout(5000);
       if (Send() && RecvProc()) {
-        g_pika_proxy->ConnectMasterDone();
+        g_pika_port->ConnectMasterDone();
         // Stop rsync, binlog sync with master is begin
         slash::StopRsync(dbsync_path);
         
-        delete g_pika_proxy->ping_thread_;
-        g_pika_proxy->ping_thread_ = new SlavepingThread(sid_);
-        g_pika_proxy->ping_thread_->StartThread();
+        delete g_pika_port->ping_thread_;
+        g_pika_port->ping_thread_ = new SlavepingThread(sid_);
+        g_pika_port->ping_thread_->StartThread();
         DLOG(INFO) << "Trysync success";
       }
       cli_->Close();
