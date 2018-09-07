@@ -22,6 +22,7 @@
 
 #define INPUT_FILESIZE 104857600
 const std::string SlotKeyPrefix_ = "_internal:slotkey:4migrate:";
+const std::string kPikaBinlogMagicEx = "\r\n__PIKA_X#$SKGI";
 
 static void Usage()
 {
@@ -101,8 +102,6 @@ bool CheckSequential(std::vector<int>& seq) {
   }
   return isSeq;
 }
-
-const std::string kPikaBinlogMagicEx = "\r\n__PIKA_X#$SKGI";
 
 int RemoveBinlogAffiliatedInfo(std::string &s) {
     // find the magic
@@ -364,15 +363,6 @@ int main(int argc, char *argv[]) {
         break;
       }
     } else if (s.IsComplete()) {
-      finished_num ++;
-      if (finished_num < file_num) {
-        fprintf (stderr, "finished_num %d, end file num %d\n", finished_num, file_num);
-        do {
-          sleep(5);
-          s = binlog_consumer->LoadNextFile();
-        } while(!s.ok());
-        continue;
-      }
       fprintf (stderr,"all binlog parsed \n");
       break;
     } else if (s.ok()) {
