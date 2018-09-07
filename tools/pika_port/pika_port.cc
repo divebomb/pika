@@ -50,7 +50,8 @@ PikaPort::PikaPort(std::string& master_ip, int master_port, std::string& passwd)
   }
 
   // Create thread
-  binlog_receiver_thread_ = new BinlogReceiverThread(g_port_conf.local_port + 1000, 1000);
+  binlog_receiver_thread_ = new BinlogReceiverThread(g_port_conf.local_ip,
+                                  g_port_conf.local_port + 1000, 1000);
   trysync_thread_ = new TrysyncThread();
   
   pthread_rwlock_init(&state_protector_, NULL);

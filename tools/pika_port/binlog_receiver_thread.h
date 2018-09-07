@@ -6,6 +6,7 @@
 #ifndef BINLOG_RECEIVER_THREAD_H_
 #define BINLOG_RECEIVER_THREAD_H_
 
+#include <string>
 #include <queue>
 
 #include "pink/include/server_thread.h"
@@ -14,23 +15,25 @@
 #include "master_conn.h"
 
 class BinlogReceiverThread {
- public:
-  BinlogReceiverThread(int port, int cron_interval = 0);
+public:
+  BinlogReceiverThread(std::string host, int port, int cron_interval = 0);
   virtual ~BinlogReceiverThread();
-	int StartThread();
+  int StartThread();
 
   void KillBinlogSender();
 
  private:
   class MasterConnFactory : public pink::ConnFactory {
    public:
-    MasterConnFactory(BinlogReceiverThread* binlog_receiver)
+    explicit MasterConnFactory(BinlogReceiverThread* binlog_receiver)
         : binlog_receiver_(binlog_receiver) {
     }
-    virtual pink::PinkConn *NewPinkConn(int connfd,
-                                        const std::string &ip_port,
-                                        pink::ServerThread *thread,
-                                        void* worker_specific_data) const override {
+
+    virtual pink::PinkConn *NewPinkConn(
+	    int connfd,
+        const std::string &ip_port,
+        pink::ServerThread *thread,
+        void* worker_specific_data) const override {
       return new MasterConn(connfd, ip_port, binlog_receiver_);
     }
 
@@ -38,20 +41,20 @@ class BinlogReceiverThread {
     BinlogReceiverThread* binlog_receiver_;
   };
 
-  class PikaBinlogReceiverHandles : public pink::ServerHandle {
-   public:
-    explicit PikaBinlogReceiverHandles(BinlogReceiverThread* binlog_receiver)
+  class Handles : public pink::ServerHandle {
+  public:
+    explicit Handles(BinlogReceiverThread* binlog_receiver)
         : binlog_receiver_(binlog_receiver) {
     }
 
     bool AccessHandle(std::string& ip) const override;
 
-   private:
+  private:
     BinlogReceiverThread* binlog_receiver_;
   };
 
   MasterConnFactory conn_factory_;
-  PikaBinlogReceiverHandles handles_;
+  Handles handles_;
   pink::ServerThread* thread_rep_;
 };
 #endif

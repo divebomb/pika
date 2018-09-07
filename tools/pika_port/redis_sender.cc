@@ -164,7 +164,7 @@ void *RedisSender::ThreadMain() {
     std::string command;
     commands_mutex_.Lock();
     command = commands_queue_.front();
-	printf("%d, command %s\n", id_, command.c_str());
+	// printf("%d, command %s\n", id_, command.c_str());
     elements_++;
     commands_queue_.pop();
     wsignal_.Signal();

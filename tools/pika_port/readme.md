@@ -3,6 +3,9 @@
 
 ## Version list
 
+> V1.3
+	* send redis data asynchronously by RedisSender in multiple thread mode
+
 > V1.2
 	* send redis data asynchronously by RedisSender
 
