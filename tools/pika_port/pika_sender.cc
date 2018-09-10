@@ -1,5 +1,7 @@
 #include "pika_sender.h"
 
+#include "include/pika_slot.h"
+
 PikaSender::PikaSender(nemo::Nemo *db, std::string ip, int64_t port, std::string password):
   cli_(NULL),
   rsignal_(&keys_mutex_),
@@ -186,6 +188,10 @@ void *PikaSender::ThreadMain() {
         delete iter;
       } else if (type == nemo::DataType::kSSize) {  // Set
         std::string s_key = key.substr(1);
+        if (s_key.find(SlotKeyPrefix) != std::string::npos) {
+          continue;
+        }
+
         nemo::SIterator *iter = db_->SScan(s_key, -1, false);
         for (; iter->Valid(); iter->Next()) {
           pink::RedisCmdArgsType argv;

@@ -3,6 +3,9 @@
 
 ## Version list
 
+> V1.4
+	* Bug Fix: filter out SlotKeyPrefix when sync snapshot data
+
 > V1.3
 	* send redis data asynchronously by RedisSender in multiple thread mode
 
