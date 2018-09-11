@@ -108,7 +108,7 @@ void RedisSender::SendRedisCommand(const std::string &command) {
     commands_queue_.push(command);
     rsignal_.Signal();
     commands_mutex_.Unlock();
-	return;
+    return;
   }
 
   DLOG(WARNING) << id_ << " commands queue size is beyond 100000";
@@ -136,7 +136,7 @@ int RedisSender::SendCommand(std::string &command) {
     slash::Status s = cli_->Send(&command);
     if (s.ok()) {
       return 0;
-	}
+    }
 
     DLOG(WARNING) << "RedisSender " << id_ << " fails to send redis command " << command << ", times:" << (idx+1);
     cli_->Close();
@@ -157,35 +157,35 @@ void *RedisSender::ThreadMain() {
   ConnectRedis();
 
   while (!should_exit_) {
-	commands_mutex_.Lock();
+    commands_mutex_.Lock();
     while (commands_queue_.size() == 0 && !should_exit_) {
       // rsignal_.TimedWait(100);
       rsignal_.Wait();
     }
-	if (commands_queue_.size() == 0 && should_exit_) {
-	  commands_mutex_.Unlock();
+    if (commands_queue_.size() == 0 && should_exit_) {
+      commands_mutex_.Unlock();
       break;
-	}
+    }
 
-   	if (commands_queue_.size() == 0) {
-	  commands_mutex_.Unlock();
+    if (commands_queue_.size() == 0) {
+      commands_mutex_.Unlock();
       continue;
-	}
-	commands_mutex_.Unlock();
+    }
+    commands_mutex_.Unlock();
 
     // get redis command
     std::string command;
     commands_mutex_.Lock();
     command = commands_queue_.front();
-	// printf("%d, command %s\n", id_, command.c_str());
+    // printf("%d, command %s\n", id_, command.c_str());
     elements_++;
     commands_queue_.pop();
     wsignal_.Signal();
     commands_mutex_.Unlock();
     ret = SendCommand(command);
-	if (ret == 0) {
+    if (ret == 0) {
       cnt++;
-	}
+    }
 
     if (cnt >= 200) {
       for(; cnt > 0; cnt--) {
