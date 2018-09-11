@@ -1,6 +1,7 @@
 #ifndef REDIS_SENDER_H_
 #define REDIS_SENDER_H_
 
+#include <atomic>
 #include <thread>
 #include <chrono>
 #include <iostream>
@@ -38,6 +39,7 @@ private:
 	std::string password_;
   	bool should_exit_;
   	int64_t elements_;
+	std::atomic<time_t> last_write_time_;
 
 	virtual void *ThreadMain();
 };

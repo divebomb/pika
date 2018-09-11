@@ -1,7 +1,10 @@
+#include <time.h>
 #include <unistd.h>
 #include <glog/logging.h>
 #include "redis_sender.h"
 // #include "binlog_log.h"
+
+static time_t kCheckDiff = 1;
 
 RedisSender::RedisSender(int id, std::string ip, int64_t port, std::string password):
   id_(id),
@@ -12,9 +15,10 @@ RedisSender::RedisSender(int id, std::string ip, int64_t port, std::string passw
   port_(port),
   password_(password),
   should_exit_(false),
-  elements_(0)
-  {
-  }
+  elements_(0) {
+
+  last_write_time_ = ::time(NULL);
+}
 
 RedisSender::~RedisSender() {
   DLOG(INFO) << "RedisSender thread " << id_ << " exit!!!";
@@ -117,6 +121,15 @@ void RedisSender::SendRedisCommand(const std::string &command) {
 }
 
 int RedisSender::SendCommand(std::string &command) {
+  time_t now = ::time(NULL);
+  if (kCheckDiff < now - last_write_time_) {
+    int ret = cli_->CheckAliveness();
+    if (ret < 0) {
+      ConnectRedis();
+    }
+    last_write_time_ = now;
+  }
+
   // Send command
   int idx = 0;
   do {

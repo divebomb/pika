@@ -16,13 +16,12 @@ extern PikaPort* g_pika_port;
 
 BinlogReceiverThread::BinlogReceiverThread(std::string host, int port, int cron_interval)
       : conn_factory_(this), handles_(this) {
-
+  // thread_rep_ = pink::NewHolyThread(port, &conn_factory_,
+  //                                  cron_interval, &handles_);
   thread_rep_ = pink::NewHolyThread(host, port, &conn_factory_,
                                     cron_interval, &handles_);
   // to prevent HolyThread::DoCronTask close the pika sender connection
   thread_rep_->set_keepalive_timeout(0);
-  // thread_rep_ = pink::NewHolyThread(port, &conn_factory_,
-  //                                  cron_interval, &handles_);
 }
 
 BinlogReceiverThread::~BinlogReceiverThread() {
