@@ -61,10 +61,10 @@ bool TrysyncThread::Send() {
   uint64_t pro_offset;
   g_pika_port->logger()->GetProducerStatus(&filenum, &pro_offset);
   LOG(WARNING) << "producer filenum: " << filenum << ", producer offset:" << pro_offset;
-  
+
   argv.push_back(std::to_string(filenum));
   argv.push_back(std::to_string(pro_offset));
-  
+
   pink::SerializeRedisCommand(argv, &tbuf_str);
 
   wbuf_str.append(tbuf_str);
@@ -223,7 +223,7 @@ int TrysyncThread::Retransmit() {
   int port = g_port_conf.forward_port;
   size_t thread_num = g_port_conf.forward_thread_num;
   std::string password = g_port_conf.forward_passwd;
-  
+
   std::vector<PikaSender*> senders;
   std::vector<std::unique_ptr<MigratorThread>> migrators;
   std::unique_ptr<nemo::Nemo> db;
@@ -238,14 +238,6 @@ int TrysyncThread::Retransmit() {
   option.write_buffer_size = 512 * 1024 * 1024; // 512M
   option.target_file_size_base = 40 * 1024 * 1024; // 40M
   db = std::unique_ptr<nemo::Nemo>(new nemo::Nemo(db_path, option));
-
-  // Open Options
-  rocksdb::Options open_options_;
-  open_options_.create_if_missing = true;
-  open_options_.write_buffer_size = 256 * 1024 * 1024; // 256M
-  open_options_.max_manifest_file_size = 64*1024*1024;
-  open_options_.max_log_file_size = 512*1024*1024;
-  open_options_.keep_log_file_num = 10;
 
   // Init SenderThread
   for (size_t i = 0; i < thread_num; i++) {
@@ -318,7 +310,7 @@ void* TrysyncThread::ThreadMain() {
     }
     sleep(2);
     DLOG(INFO) << "Should connect master";
-    
+
     std::string master_ip = g_port_conf.master_ip;
     int master_port = g_port_conf.master_port;
     std::string dbsync_path = g_port_conf.dump_path;
@@ -342,7 +334,7 @@ void* TrysyncThread::ThreadMain() {
         g_pika_port->ConnectMasterDone();
         // Stop rsync, binlog sync with master is begin
         slash::StopRsync(dbsync_path);
-        
+
         delete g_pika_port->ping_thread_;
         g_pika_port->ping_thread_ = new SlavepingThread(sid_);
         g_pika_port->ping_thread_->StartThread();
