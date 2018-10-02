@@ -274,7 +274,6 @@ void *PikaSender::ThreadMain() {
 
         if (ttl >= 0) {
           pink::RedisCmdArgsType argv;
-          std::string cmd;
 
           argv.push_back("EXPIRE");
           argv.push_back(e_key);
